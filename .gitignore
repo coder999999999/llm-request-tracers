@@ -13,6 +13,47 @@ desktop.ini
 # Local scratch
 node_modules/
 *.log
-.env
 tmp/
 temp/
+scratch/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.ppk
+credentials*.json
+service-account*.json
+secrets.*
+*.secret
+.npmrc
+.pypirc
+.netrc
+.git-credentials
+.personal-patterns.txt
+
+# Python / build output
+.venv/
+venv/
+__pycache__/
+*.pyc
+dist/
+build/
+
+# Local data and raw recordings
+*.sqlite
+*.sqlite3
+*.db
+recordings/
+raw/
+*.mov
+*.mkv

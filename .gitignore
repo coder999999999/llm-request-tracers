@@ -1,0 +1,18 @@
+# Claude Code / editors
+.claude/
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local scratch
+node_modules/
+*.log
+.env
+tmp/
+temp/

@@ -1,45 +1,31 @@
 # Request Tracers
 
-Learning notes in interactive form. I wanted to understand what an LLM inference server does between receiving a chat request and streaming tokens back, so I followed one streaming `POST /v1/chat/completions` request through the source of two open-source servers and turned what I found into maps you can step through.
+Step-through maps of one streaming `POST /v1/chat/completions` request through the source of two LLM inference servers. Simplified, pinned to one commit each, and probably wrong in places. Corrections welcome as issues.
 
-I'm learning this as I go. The maps simplify a lot, each one is pinned to a single commit, and some of it is probably wrong. Corrections are welcome as issues.
-
-## What's here
+## Pages
 
 | Page | What it shows | Pinned to |
 | --- | --- | --- |
-| [`index.html`](index.html) | Start page: links to the maps, plus a side-by-side of how the two servers differ | |
-| [`llama-cpp.html`](llama-cpp.html) | **llama.cpp request tracer.** 53 steps through `llama-server`: HTTP thread, slot scheduler, libllama decode, ggml graph, sampling, SSE | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
-| [`vllm.html`](vllm.html) | **vLLM request tracer.** 59 steps through `vllm serve`: API process, ZMQ, EngineCore scheduler and paged KV cache, GPU forward pass, sampling, detokenize, SSE. Has a speed control. | [`vllm-project/vllm@1388100`](https://github.com/vllm-project/vllm/tree/138810056093301f4881050fcf2b1786939da387) |
-| [`vllm-module-graph.html`](vllm-module-graph.html) | **vLLM module graph.** The import graph of vLLM's 164 Python modules, with an 18-step trace of the same request across them | `vllm-project/vllm@7867d6c` |
-| [`video/llama-cpp-request-trace.mp4`](video/llama-cpp-request-trace.mp4) | **The 60-second version.** A narrated collage film of the llama.cpp trace, also embedded on the start page, with English captions (`.en.vtt`). Images from FLUX.1 [schnell], voice from Kokoro-82M, motion graphics and score made in code with Claude | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
+| [`index.html`](index.html) | Start page and side-by-side comparison | |
+| [`llama-cpp.html`](llama-cpp.html) | **llama.cpp tracer.** 53 steps through `llama-server`: HTTP, slot scheduler, decode, ggml graph, sampling, SSE | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
+| [`vllm.html`](vllm.html) | **vLLM tracer.** 59 steps through `vllm serve`: API process, ZMQ, scheduler and paged KV cache, forward pass, sampling, detokenize, SSE | [`vllm-project/vllm@1388100`](https://github.com/vllm-project/vllm/tree/138810056093301f4881050fcf2b1786939da387) |
+| [`vllm-module-graph.html`](vllm-module-graph.html) | **vLLM module graph.** Import graph of 164 modules with an 18-step trace | `vllm-project/vllm@7867d6c` |
+| [`video/llama-cpp-request-trace.mp4`](video/llama-cpp-request-trace.mp4) | **60-second video** of the llama.cpp trace, with English captions. Also on the start page | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
 
-Each page is a single self-contained HTML file with no build step and no dependencies beyond Google Fonts.
+Each page is a single self-contained HTML file. No build step.
 
 ## Viewing
 
-Open `index.html` in a browser, or serve the folder:
-
-```sh
-python3 -m http.server 8000
-# then visit http://localhost:8000
-```
-
-They work best on a laptop or desktop screen. Press **Trace** (or use the arrow keys) to step through a request, and click any box for what it does, example data at that point, and links to the exact source lines.
+Open `index.html` in a browser. Press **Trace** or use the arrow keys to step; click a box for details and source links. Best on a desktop screen.
 
 ## How they were made
 
-I cloned each repository at a fixed commit and read along the request path with Claude as a reading partner. Every box links to the file and line it describes, and a small script re-checked those references against the pinned commit. Token ids, probabilities and KV block numbers in the examples are illustrative.
+Each repo was read at a fixed commit with Claude. Every box links to its source line, checked by script against that commit. Example token ids, probabilities and block numbers are illustrative.
 
-## Publishing with GitHub Pages (later)
+## GitHub Pages
 
-The repo is laid out to work with Pages as-is (`.nojekyll` is included so files are served untouched):
-
-1. Settings → Pages → Build and deployment → **Deploy from a branch**
-2. Branch `main`, folder `/ (root)`
-
-Pages on a private repository needs a paid GitHub plan; on a free plan, make the repository public first.
+Works as-is (`.nojekyll` included): Settings → Pages → Deploy from a branch → `main`, `/ (root)`. Private repos need a paid plan.
 
 ## Not affiliated
 
-These are personal learning notes, not official documentation, and are not affiliated with the [llama.cpp](https://github.com/ggml-org/llama.cpp) or [vLLM](https://github.com/vllm-project/vllm) projects. Both codebases move quickly, so treat this as a snapshot from early October 2026.
+Learning notes, not affiliated with [llama.cpp](https://github.com/ggml-org/llama.cpp) or [vLLM](https://github.com/vllm-project/vllm). Snapshot from October 2026.

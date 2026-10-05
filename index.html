@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Request Tracers</title>
-<meta name="description" content="Learning notes: interactive maps of one streaming chat request moving through llama.cpp and vLLM, pinned to the source.">
+<meta name="description" content="Step-through maps of one chat request through llama.cpp and vLLM, linked to the source.">
 <meta property="og:title" content="Request Tracers">
-<meta property="og:description" content="Learning notes: interactive maps of one streaming chat request moving through llama.cpp and vLLM, pinned to the source.">
+<meta property="og:description" content="Step-through maps of one chat request through llama.cpp and vLLM, linked to the source.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -154,15 +154,15 @@ footer p{margin:0;max-width:80ch}
 <section class="hero">
   <div class="req">POST /v1/chat/completions <span>·</span> "stream": true</div>
   <h1>Following one chat request through an LLM server</h1>
-  <p class="lede">I wanted to understand what happens between a chat request arriving and the tokens streaming back. So I picked two open-source inference servers, llama.cpp and vLLM, read the code along one request's path, and turned my notes into maps you can step through.</p>
-  <p class="caveat">I'm learning this as I go. These maps simplify a lot, each one is pinned to a single commit, and some of it is probably wrong. If you know these codebases, corrections are very welcome.</p>
+  <p class="lede">What happens between a chat request arriving and tokens streaming back? Step-through maps of one request's path through the source of llama.cpp and vLLM.</p>
+  <p class="caveat">Simplified, pinned to one commit each, and probably wrong in places. Corrections welcome.</p>
 </section>
 
 <section class="sec" aria-labelledby="h-film">
   <div class="sec-h">
     <span class="eyebrow" id="h-film">The short version</span>
     <h2>One request in 60 seconds</h2>
-    <p>A narrated walk through the llama.cpp map as a collage film: the same request, the same steps, the real function names. Watch it first, then open the tracer to step through at your own pace.</p>
+    <p>A narrated walk through the llama.cpp map. Watch it, then step through the tracer.</p>
   </div>
   <figure class="film-fig">
     <video class="film-v" controls playsinline preload="none" poster="assets/preview-llama-cpp-video.webp" width="1920" height="1080" aria-describedby="film-cap">
@@ -188,7 +188,7 @@ footer p{margin:0;max-width:80ch}
       <div class="card-b">
         <div class="kick"><span class="tag">Start here</span>llama.cpp · C++</div>
         <h3>llama.cpp request tracer</h3>
-        <p>One streaming chat request through <code>llama-server</code>. An HTTP thread builds the task, a single inference thread batches it into a decode step, ggml runs the graph on the GPU, and tokens flow back as server-sent events.</p>
+        <p>One request through <code>llama-server</code>: HTTP thread, single inference thread, ggml on the GPU, tokens back as server-sent events.</p>
         <div class="meta"><span>53 steps · 60 nodes · @2ca15f5</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
       </div>
     </a>
@@ -197,7 +197,7 @@ footer p{margin:0;max-width:80ch}
       <div class="card-b">
         <div class="kick">vLLM · Python</div>
         <h3>vLLM request tracer</h3>
-        <p>The same request through <code>vllm serve</code>. It crosses over ZMQ into the EngineCore process for scheduling, paged KV cache, the GPU forward pass and sampling, then crosses back to be detokenized and streamed. Has a speed control.</p>
+        <p>The same request through <code>vllm serve</code>: over ZMQ to EngineCore for scheduling, paged KV cache, forward pass and sampling, then back to detokenize and stream.</p>
         <div class="meta"><span>59 steps · 69 nodes · @1388100</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
       </div>
     </a>
@@ -206,7 +206,7 @@ footer p{margin:0;max-width:80ch}
       <div class="card-b">
         <div class="kick">vLLM · Python · zoomed out</div>
         <h3>vLLM module graph</h3>
-        <p>A wider view: how vLLM's Python modules import each other, with the same request traced across them in 18 steps. Useful for seeing where the request path sits in the whole codebase.</p>
+        <p>vLLM's module import graph, with the same request traced across it in 18 steps.</p>
         <div class="meta"><span>18 steps · 164 modules · @7867d6c</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
       </div>
     </a>
@@ -217,7 +217,7 @@ footer p{margin:0;max-width:80ch}
   <div class="sec-h">
     <span class="eyebrow" id="h-routes">Same request, two designs</span>
     <h2>Where the request goes</h2>
-    <p>These are the lanes from each tracer, left to right. Dashed lines are where the request is handed to another thread or process. The purple bracket is the part that runs again for every output token.</p>
+    <p>Each tracer's lanes, left to right. Dashed lines mark a handoff to another thread or process. The purple bracket repeats per output token.</p>
   </div>
 
   <div class="routes">
@@ -292,7 +292,7 @@ footer p{margin:0;max-width:80ch}
           <td data-k="vLLM">Token ids go back over ZMQ. The API process turns them into text, checks stop strings, and writes the SSE chunk.</td></tr>
       </tbody>
     </table>
-    <p class="foot-note">Describes the default setups the tracers assume: a llama.cpp GPU build with all layers offloaded, and <code>vllm serve meta-llama/Llama-3.1-8B-Instruct</code> on one H100. Most of this is configurable.</p>
+    <p class="foot-note">Assumes defaults: llama.cpp GPU build with all layers offloaded; <code>vllm serve meta-llama/Llama-3.1-8B-Instruct</code> on one H100.</p>
   </div>
 </section>
 
@@ -301,29 +301,29 @@ footer p{margin:0;max-width:80ch}
     <div class="note">
       <h3>Reading the maps</h3>
       <ul>
-        <li>Press <b>Trace</b>, or step with <kbd>←</kbd> <kbd>→</kbd>. Each step gets a short note.</li>
-        <li>Click any box to see what it does, example data at that point, and links to the exact source lines.</li>
-        <li>Drag to pan, scroll or pinch to zoom. They work best on a laptop or desktop screen.</li>
+        <li>Press <b>Trace</b>, or step with <kbd>←</kbd> <kbd>→</kbd>.</li>
+        <li>Click a box for details, example data and source links.</li>
+        <li>Drag to pan, scroll to zoom. Best on a desktop screen.</li>
       </ul>
     </div>
     <div class="note">
       <h3>How they were made</h3>
-      <p>I cloned each repository at a fixed commit and read along the request path with Claude as a reading partner. Every box links to the file and line it describes, and a small script re-checked those references against the pinned commit. Token ids, probabilities and KV block numbers in the examples are made up to illustrate the shape of the data.</p>
+      <p>Read each repo at a fixed commit with Claude. Every box links to its source line, checked by script against that commit. Example token ids, probabilities and block numbers are illustrative.</p>
     </div>
     <div class="note">
-      <h3>Next on my list</h3>
+      <h3>Next</h3>
       <ul>
-        <li>A second request arriving mid-stream, to watch batching happen.</li>
-        <li>The same request on several GPUs with tensor parallelism.</li>
-        <li>Speculative decoding, end to end.</li>
+        <li>A second request mid-stream, to show batching.</li>
+        <li>Multi-GPU with tensor parallelism.</li>
+        <li>Speculative decoding.</li>
       </ul>
     </div>
   </div>
 </section>
 
 <footer>
-  <p>Learning notes, not official documentation. Not affiliated with the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a> projects. Both codebases change quickly, so treat these as a snapshot from early October 2026.</p>
-  <p>Spotted a mistake? Open an issue on this repository.</p>
+  <p>Learning notes, not affiliated with <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a>. Snapshot from October 2026.</p>
+  <p>Spotted a mistake? Open an issue.</p>
 </footer>
 
 </div>

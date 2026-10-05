@@ -12,6 +12,7 @@ I'm learning this as I go. The maps simplify a lot, each one is pinned to a sing
 | [`llama-cpp.html`](llama-cpp.html) | **llama.cpp request tracer.** 53 steps through `llama-server`: HTTP thread, slot scheduler, libllama decode, ggml graph, sampling, SSE | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
 | [`vllm.html`](vllm.html) | **vLLM request tracer.** 59 steps through `vllm serve`: API process, ZMQ, EngineCore scheduler and paged KV cache, GPU forward pass, sampling, detokenize, SSE. Has a speed control. | [`vllm-project/vllm@1388100`](https://github.com/vllm-project/vllm/tree/138810056093301f4881050fcf2b1786939da387) |
 | [`vllm-module-graph.html`](vllm-module-graph.html) | **vLLM module graph.** The import graph of vLLM's 164 Python modules, with an 18-step trace of the same request across them | `vllm-project/vllm@7867d6c` |
+| [`video/llama-cpp-request-trace.mp4`](video/llama-cpp-request-trace.mp4) | **The 60-second version.** A narrated collage film of the llama.cpp trace, also embedded on the start page, with English captions (`.en.vtt`). Images from FLUX.1 [schnell], voice from Kokoro-82M, motion graphics and score made in code with Claude | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
 
 Each page is a single self-contained HTML file with no build step and no dependencies beyond Google Fonts.
 

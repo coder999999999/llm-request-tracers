@@ -74,6 +74,12 @@ h1,h2,h3{font-family:var(--display);font-weight:600;text-wrap:balance;margin:0;l
 .go svg{transition:transform .2s}
 @media (prefers-reduced-motion:reduce){.card,.go svg{transition:none}.card:hover .go svg{transform:none}}
 
+/* film */
+.film-fig{margin:0;display:grid;gap:12px}
+.film-v{display:block;width:100%;height:auto;aspect-ratio:16/9;background:var(--raise-2);border:1px solid var(--line);border-radius:10px}
+.film-fig figcaption{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 20px;font:12px/1.5 var(--mono);color:var(--fg-3)}
+.film-fig figcaption span:first-child{color:var(--fg-2)}
+
 /* route strips */
 .routes{display:grid;gap:28px}
 .route{margin:0;display:grid;gap:12px}
@@ -150,6 +156,25 @@ footer p{margin:0;max-width:80ch}
   <h1>Following one chat request through an LLM server</h1>
   <p class="lede">I wanted to understand what happens between a chat request arriving and the tokens streaming back. So I picked two open-source inference servers, llama.cpp and vLLM, read the code along one request's path, and turned my notes into maps you can step through.</p>
   <p class="caveat">I'm learning this as I go. These maps simplify a lot, each one is pinned to a single commit, and some of it is probably wrong. If you know these codebases, corrections are very welcome.</p>
+</section>
+
+<section class="sec" aria-labelledby="h-film">
+  <div class="sec-h">
+    <span class="eyebrow" id="h-film">The short version</span>
+    <h2>One request in 60 seconds</h2>
+    <p>A narrated walk through the llama.cpp map as a collage film: the same request, the same steps, the real function names. Watch it first, then open the tracer to step through at your own pace.</p>
+  </div>
+  <figure class="film-fig">
+    <video class="film-v" controls playsinline preload="none" poster="assets/preview-llama-cpp-video.webp" width="1920" height="1080" aria-describedby="film-cap">
+      <source src="video/llama-cpp-request-trace.mp4" type="video/mp4">
+      <track kind="captions" srclang="en" label="English" src="video/llama-cpp-request-trace.en.vtt">
+      <a href="video/llama-cpp-request-trace.mp4">Download the video (MP4, 34 MB)</a>
+    </video>
+    <figcaption id="film-cap">
+      <span>60 s · 1080p · narrated, with captions · llama.cpp @2ca15f5</span>
+      <span>Made with Claude. Images: FLUX.1 [schnell]. Voice: Kokoro-82M. Motion graphics, edit and score: built in code.</span>
+    </figcaption>
+  </figure>
 </section>
 
 <section class="sec" aria-labelledby="h-tracers">

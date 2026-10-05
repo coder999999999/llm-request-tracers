@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Follow one streaming chat request through vllm serve, across the API and EngineCore processes, with links to the exact source lines.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>vLLM Request Tracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-bleed node canvas, top command bar, right inspector, bottom trace transport. Dark-only by request. */
+:root{
+  color-scheme: dark;
+  --bg:#0a0d11; --bg-2:#0f1318; --panel:#12161c; --panel-2:#171c23; --line:#232a33; --line-2:#2e3742;
+  --fg:#d8dee7; --fg-2:#9aa5b4; --fg-3:#647083;
+  --hot:#ffb547; --hot-dim:rgba(255,181,71,.16); --loop:#b993ff; --startup:#5fb3a9; --branch:#4a5463;
+  --c-client:#8b96a8; --c-http:#4cb6ac; --c-serve:#64a0f2; --c-build:#7f8cf2; --c-eclient:#a28af0;
+  --c-core:#cf86da; --c-sched:#f08a5d; --c-runner:#9cc65b; --c-model:#58c6df; --c-kern:#e2cf6b;
+  --c-samp:#f17a96; --c-upd:#c08ae0; --c-out:#59cc9c; --c-parse:#64a0f2;
+  --sans:"IBM Plex Sans Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);overflow:hidden;margin:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+a{color:var(--c-parse)}
+
+.app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr;grid-template-columns:1fr 340px}
+.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:9px 16px;padding-top:calc(9px + env(safe-area-inset-top,0px));background:var(--bg-2);border-bottom:1px solid var(--line);z-index:5}
+.brand{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.brand b{font-weight:700;font-size:15px;letter-spacing:.01em}
+.brand span{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
+.brand a{color:var(--fg-3);text-decoration:none;border-bottom:1px dotted var(--line-2)}
+.search{position:relative;flex:0 1 260px;min-width:160px}
+.search input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 52px 6px 28px;color:var(--fg);font:12px var(--mono)}
+.search input::placeholder{color:var(--fg-3)}
+.search svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);fill:var(--fg-3)}
+.search .count{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:11px var(--mono);color:var(--fg-3)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:3px 10px 3px 8px;font-size:12px;cursor:pointer;color:var(--fg-2);user-select:none}
+.chip i{width:8px;height:8px;border-radius:50%;display:block}
+.chip[aria-pressed="true"]{color:var(--fg);border-color:var(--fg-3);background:var(--panel-2)}
+.chip[aria-pressed="false"] i{opacity:.3}
+.chip .n{font:10px var(--mono);color:var(--fg-3)}
+.spacer{flex:1}
+.zoomctl{display:flex;align-items:center;gap:4px}
+.ibtn{border:1px solid var(--line-2);background:var(--panel);border-radius:6px;height:28px;min-width:28px;padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--fg-2)}
+.ibtn:hover{color:var(--fg);border-color:var(--fg-3)}
+.ibtn.primary{border-color:rgba(255,181,71,.5);color:var(--hot);background:var(--hot-dim)}
+.zoomctl .pct{font:11px var(--mono);color:var(--fg-3);width:42px;text-align:center}
+
+/* canvas */
+.canvas{position:relative;overflow:hidden;cursor:grab;touch-action:none;background-color:var(--bg);
+  background-image:radial-gradient(circle,#1d232c 1.1px,transparent 1.2px)}
+.canvas.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.wires .hit{pointer-events:stroke;stroke:transparent;stroke-width:14;fill:none;cursor:pointer}
+.wire{fill:none;stroke-width:1.6;transition:opacity .18s,stroke-width .12s}
+.wire.k-branch{stroke:var(--branch);stroke-dasharray:4 4}
+.wire.k-backend{stroke:#35505a;stroke-dasharray:2 4}
+.wire.k-startup{stroke:var(--startup);opacity:.55;stroke-dasharray:6 4}
+.wire.k-loop{stroke:var(--loop);stroke-dasharray:7 5;stroke-width:1.8}
+.wire.k-hot{stroke:var(--hot);stroke-width:2.2;opacity:.85}
+.wire.k-hot.flow{stroke-dasharray:10 8;animation:flow 1.1s linear infinite}
+.glow{fill:none;stroke:var(--hot);stroke-width:7;opacity:.10;filter:blur(3px);pointer-events:none}
+@keyframes flow{to{stroke-dashoffset:-36}}
+.wire.lit{stroke-width:3.2;opacity:1}
+.wire.k-branch.lit,.wire.k-backend.lit{stroke:#8b97a8}
+.wire.k-startup.lit{opacity:1}
+.wlabel{font:10.5px var(--mono);fill:var(--fg-3);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.wlabel.k-loop{fill:var(--loop)}
+.wlabel.k-hot{fill:#c99245}
+.dim-wires .wire:not(.lit),.dim-wires .glow{opacity:.1}
+.dim-wires .wlabel:not(.lit){opacity:.15}
+.trav{stroke:#fff3dc!important;opacity:1!important}
+.packet{fill:#fff3dc;filter:drop-shadow(0 0 6px var(--hot))}
+
+.lane-h{position:absolute;font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;padding-bottom:6px;border-bottom:1px solid var(--line);width:244px;display:flex;justify-content:space-between}
+.lane-h small{font:10px var(--mono);letter-spacing:0;text-transform:none;color:var(--fg-3)}
+.band{position:absolute;border:1px dashed #22413e;border-radius:10px;background:rgba(95,179,169,.03)}
+.packet[cx="-100"]{display:none}
+.pbound{position:absolute;width:0;border-left:1px dashed rgba(185,139,196,.45);pointer-events:none}
+.pbound span{position:absolute;left:-10px;writing-mode:vertical-rl;transform:rotate(180deg);font:600 10px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:#b98bc4;background:var(--bg);padding:8px 3px;white-space:nowrap}
+.band span{position:absolute;left:12px;top:-9px;padding:0 6px;background:var(--bg);font:600 10px var(--sans);letter-spacing:.14em;color:var(--startup);text-transform:uppercase}
+
+.node{position:absolute;width:244px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:7px;cursor:pointer;user-select:none;transition:opacity .18s,border-color .15s,box-shadow .15s;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.node .hd{display:flex;align-items:center;gap:7px;padding:6px 9px 5px;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;position:relative}
+.node .hd::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:3px;border-radius:7px 7px 0 0;background:var(--lc)}
+.node .tt{font-weight:600;font-size:13px;line-height:1.2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .bd{padding:6px 9px 8px;display:grid;gap:2px}
+.node .fn{font:11px/1.35 var(--mono);color:#c3cdda;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .loc{font:10px var(--mono);color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .tag{font:9.5px var(--mono);padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--fg-3);white-space:nowrap}
+.node.k-hot .tag{color:var(--hot);border-color:rgba(255,181,71,.4)}
+.node.k-startup .tag{color:var(--startup);border-color:rgba(95,179,169,.4)}
+.node .step{font:600 10px var(--mono);color:#1a1206;background:var(--hot);border-radius:3px;padding:0 4px;min-width:14px;text-align:center}
+.node .port{position:absolute;top:24px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--lc);box-sizing:border-box}
+.node .port.in{left:-5px}.node .port.out{right:-5px}
+.node.k-hot{border-color:#3a3226}
+.node.k-branch,.node.k-backend{background:#10141a}
+.node.k-branch .tt,.node.k-backend .tt{color:var(--fg-2)}
+.node:hover{border-color:var(--fg-3)}
+.node.sel{border-color:var(--hot);box-shadow:0 0 0 1px var(--hot),0 0 26px rgba(255,181,71,.22)}
+.node.cur{border-color:#fff3dc;box-shadow:0 0 0 2px #fff3dc,0 0 34px rgba(255,181,71,.45)}
+.node.visited{border-color:#6b5532}
+.dim-nodes .node:not(.lit){opacity:.28}
+.searching .node:not(.hit){opacity:.18}
+.searching .node.hit{border-color:var(--c-parse)}
+.node.dragging{cursor:grabbing;box-shadow:0 14px 30px rgba(0,0,0,.55);z-index:3}
+
+.tip{position:fixed;z-index:20;max-width:300px;background:#0c0f14;border:1px solid var(--line-2);border-radius:7px;padding:9px 11px;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:12.5px;color:var(--fg)}
+.tip b{display:block;font-size:12px;margin-bottom:3px;color:var(--hot)}
+.tip code{font:11px var(--mono);color:var(--fg-2)}
+
+/* inspector */
+.insp{background:var(--bg-2);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:16px;z-index:4}
+.insp h2{margin:0;font-size:19px;line-height:1.15;font-weight:700;text-wrap:balance}
+.insp .eyebrow{display:flex;gap:8px;align-items:center;font:600 10.5px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.insp .eyebrow i{width:8px;height:8px;border-radius:2px;background:var(--lc)}
+.insp .fnline{font:12px var(--mono);color:#c3cdda;word-break:break-word;margin-top:6px}
+.insp .src{display:inline-flex;gap:6px;align-items:center;font:11.5px var(--mono);margin-top:6px;color:var(--c-parse);text-decoration:none;word-break:break-all}
+.insp .src:hover{text-decoration:underline}
+.insp p{margin:0;color:var(--fg-2);font-size:13.5px;line-height:1.55;max-width:62ch}
+.sec{display:grid;gap:7px}
+.sec > h3{margin:0;font:600 10.5px var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-3)}
+.payload{margin:0;background:#080a0d;border:1px solid var(--line);border-left:2px solid var(--hot);border-radius:5px;padding:9px 10px;font:11px/1.5 var(--mono);color:#e9d5b0;white-space:pre-wrap;word-break:break-word;overflow-x:auto}
+.payload .c{color:var(--fg-3)}
+.calls{list-style:none;margin:0;padding:0;display:grid;gap:1px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.calls li{background:var(--panel);padding:6px 9px;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.calls li span{font:11px var(--mono);color:#c3cdda;min-width:0;word-break:break-word}
+.calls li a{font:10.5px var(--mono);color:var(--fg-3);white-space:nowrap;text-decoration:none}
+.calls li a:hover{color:var(--c-parse)}
+.jumps{display:flex;flex-wrap:wrap;gap:5px}
+.jump{border:1px solid var(--line-2);background:var(--panel);border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--fg-2);text-align:left}
+.jump:hover{color:var(--fg);border-color:var(--fg-3)}
+.jump i{width:6px;height:6px;border-radius:50%;background:var(--lc);flex:none}
+.jump.hot{border-color:rgba(255,181,71,.35);color:var(--fg)}
+.jump em{font-style:normal;font:10px var(--mono);color:var(--fg-3)}
+.navrow{display:flex;gap:6px}
+.navrow .ibtn{flex:1}
+.narr{border:1px solid rgba(255,181,71,.35);background:linear-gradient(180deg,rgba(255,181,71,.08),transparent);border-radius:7px;padding:10px 12px;display:grid;gap:5px}
+.narr .k{font:600 10.5px var(--mono);color:var(--hot);letter-spacing:.04em}
+.narr p{color:var(--fg)}
+.empty{color:var(--fg-2);display:grid;gap:12px}
+.empty ol{margin:0;padding-left:18px;display:grid;gap:6px}
+.kbd{font:10.5px var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--fg-2)}
+.closeinsp{display:none}
+
+/* transport */
+.transport{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(15,19,24,.94);border:1px solid var(--line-2);border-radius:10px;padding:7px 9px 7px 12px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:4;max-width:calc(100% - 32px);box-sizing:border-box}
+.transport .lbl{display:grid;min-width:0;width:300px}
+.transport .lbl small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em}
+.transport .lbl span{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.transport .prog{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:4px}
+.transport .prog b{display:block;height:100%;background:var(--hot);width:0;transition:width .3s}
+.transport .ibtn{height:30px;min-width:30px;white-space:nowrap}
+.transport label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-2);white-space:nowrap;cursor:pointer}
+.transport input{accent-color:var(--hot)}
+.speed{display:flex;align-items:center;gap:6px;font:600 10px var(--mono);color:var(--fg-3);letter-spacing:.05em;white-space:nowrap}
+.speed select{appearance:none;-webkit-appearance:none;background:var(--panel);color:var(--fg);border:1px solid var(--line-2);border-radius:6px;height:30px;padding:0 24px 0 9px;font:500 12px var(--mono);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--fg-3) 50%),linear-gradient(135deg,var(--fg-3) 50%,transparent 50%);background-position:calc(100% - 13px) 13px,calc(100% - 9px) 13px;background-size:4px 4px;background-repeat:no-repeat}
+.speed select:hover{border-color:var(--fg-3)}
+.transport .dwell{height:2px;border-radius:2px;overflow:hidden;margin-top:2px;background:transparent}
+.transport .dwell b{display:block;height:100%;width:0;background:rgba(255,181,71,.45)}
+
+.legend{position:absolute;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:5px;background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:11.5px;color:var(--fg-2);z-index:3}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend svg{flex:none}
+.mini{position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;z-index:3;cursor:pointer}
+.mini rect.v{fill:rgba(255,181,71,.07);stroke:var(--hot);stroke-width:1}
+
+@media (max-width: 1100px){ .legend{display:none} }
+@media (max-width: 860px){
+  .app{grid-template-columns:1fr}
+  .insp{position:fixed;left:0;right:0;bottom:0;max-height:52%;border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(0,0,0,.5)}
+  .insp.closed{display:none}
+  .closeinsp{display:inline-flex;position:absolute;right:12px;top:12px}
+  .mini{display:none}
+  .transport .lbl{width:auto;flex:1 1 120px}
+  .speed span{display:none}
+  .transport{gap:6px}
+  .transport label{display:none}
+  .search{flex:1 1 100%}
+}
+@media (prefers-reduced-motion: reduce){ .wire.k-hot.flow{animation:none} .node,.wire{transition:none} }
+</style>
+<style>
+/* Back link to the index page (added for the repo). */
+.home{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px 0 7px;border:1px solid var(--line-2);border-radius:6px;color:var(--fg-2);text-decoration:none;font-size:12px;white-space:nowrap;flex:none}
+.home:hover{color:var(--fg);border-color:var(--fg-3)}
+.home svg{flex:none}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <a class="home" href="index.html" title="Back to all tracers"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3 2 8l5 5M2.5 8H14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>All tracers</a>
+    <div class="brand"><b>vLLM</b><span>request tracer · <a id="commitlink" href="https://github.com/vllm-project/vllm/tree/138810056093301f4881050fcf2b1786939da387" target="_blank" rel="noopener">1388100</a> · Oct 4 2026</span></div>
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 9.6a5.5 5.5 0 1 0-1.1 1.1l3.9 3.9 1.1-1.1-3.9-3.9zM6.3 10.3a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+      <input id="q" type="search" placeholder="Search functions, files…" aria-label="Search nodes" autocomplete="off">
+      <span class="count" id="qcount"></span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Filter by status"></div>
+    <div class="spacer"></div>
+    <div class="zoomctl">
+      <button class="ibtn primary" id="btnHot" title="Fit the common request path">Hot path</button>
+      <button class="ibtn" id="btnOut" aria-label="Zoom out">−</button>
+      <span class="pct" id="pct">100%</span>
+      <button class="ibtn" id="btnIn" aria-label="Zoom in">+</button>
+      <button class="ibtn" id="btnFit" title="Fit everything (F)">Fit</button>
+    </div>
+  </header>
+
+  <main class="canvas" id="canvas" aria-label="Request flow graph">
+    <div class="world" id="world">
+      <svg class="wires" id="wires" width="1" height="1">
+        <defs></defs>
+        <g id="glows"></g><g id="wiresG"></g><g id="labels"></g><g id="hits"></g>
+        <circle class="packet" id="packet" r="5" cx="-100" cy="-100"/>
+      </svg>
+    </div>
+
+    <div class="legend" aria-label="Legend">
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#ffb547" stroke-width="2.2" stroke-dasharray="10 6"/></svg>Hot path · streaming chat, 1 GPU</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#b993ff" stroke-width="1.8" stroke-dasharray="7 5"/></svg>Per-token loop</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#4a5463" stroke-width="1.6" stroke-dasharray="4 4"/></svg>Alternate route / optional feature</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#5fb3a9" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Startup (runs once)</div>
+      <div><svg width="30" height="12"><line x1="15" y1="0" x2="15" y2="12" stroke="#b98bc4" stroke-width="1.4" stroke-dasharray="3 3"/></svg>Process boundary (ZMQ hop)</div>
+    </div>
+
+    <div class="transport" id="transport">
+      <button class="ibtn" id="tFirst" aria-label="Restart trace" title="Restart">⏮</button>
+      <button class="ibtn" id="tPrev" aria-label="Previous step" title="Previous (←)">◀</button>
+      <button class="ibtn primary" id="tPlay" aria-label="Play trace" title="Play / pause (Space)">▶ Trace</button>
+      <button class="ibtn" id="tNext" aria-label="Next step" title="Next (→)">▶▶</button>
+      <div class="lbl"><small id="tStep">TRACE A REQUEST</small><span id="tName">Press ▶ to follow one chat request end to end</span><div class="prog"><b id="tProg"></b></div><div class="dwell" title="Time until the next step"><b id="tDwell"></b></div></div>
+      <label class="speed" for="tSpeed"><span>SPEED</span><select id="tSpeed" aria-label="Playback speed" title="Playback speed ([ slower, ] faster)"></select></label>
+      <label><input type="checkbox" id="tFollow" checked> Follow</label>
+    </div>
+
+    <svg class="mini" id="mini" width="190" height="104" aria-label="Minimap"></svg>
+  </main>
+
+  <aside class="insp" id="insp" aria-live="polite"></aside>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const SHA = "138810056093301f4881050fcf2b1786939da387";
+const REPO = "https://github.com/vllm-project/vllm";
+const GH = `${REPO}/blob/${SHA}/`;
+const F = {
+  cli:"vllm/entrypoints/cli/serve.py", ent:"vllm/entrypoints/launchers/api_server/entry.py", lch:"vllm/entrypoints/launchers/launcher.py",
+  app:"vllm/entrypoints/launchers/app.py", ar:"vllm/entrypoints/openai/chat_completion/api_router.py", cs:"vllm/entrypoints/openai/chat_completion/serving.py",
+  cp:"vllm/entrypoints/openai/chat_completion/protocol.py", au:"vllm/entrypoints/serve/utils/api_utils.py", sse:"vllm/entrypoints/serve/utils/sse_keep_alive.py",
+  cu:"vllm/entrypoints/chat_utils.py", cmp:"vllm/entrypoints/openai/completion/api_router.py", anth:"vllm/entrypoints/anthropic/api_router.py",
+  resp:"vllm/entrypoints/openai/responses/api_router.py", emb:"vllm/entrypoints/pooling/embed/api_router.py", ap:"vllm/parser/abstract_parser.py",
+  orr:"vllm/renderers/online_renderer.py", rb:"vllm/renderers/base.py", hf:"vllm/renderers/hf.py", mc:"vllm/config/model.py",
+  al:"vllm/v1/engine/async_llm.py", ip:"vllm/v1/engine/input_processor.py", op:"vllm/v1/engine/output_processor.py", dt:"vllm/v1/engine/detokenizer.py",
+  cc:"vllm/v1/engine/core_client.py", core:"vllm/v1/engine/core.py", eu:"vllm/v1/engine/utils.py", req:"vllm/v1/request.py",
+  sch:"vllm/v1/core/sched/scheduler.py", asch:"vllm/v1/core/sched/async_scheduler.py", su:"vllm/v1/core/sched/utils.py",
+  kvm:"vllm/v1/core/kv_cache_manager.py", bp:"vllm/v1/core/block_pool.py", kvu:"vllm/v1/core/kv_cache_utils.py", sou:"vllm/v1/structured_output/__init__.py",
+  upe:"vllm/v1/executor/uniproc_executor.py", mpe:"vllm/v1/executor/multiproc_executor.py", gw:"vllm/v1/worker/gpu_worker.py",
+  mr:"vllm/v1/worker/gpu/model_runner.py", ib:"vllm/v1/worker/gpu/input_batch.py", atu:"vllm/v1/worker/gpu/attn_utils.py", msd:"vllm/v1/worker/gpu/model_states/default.py",
+  cgu:"vllm/v1/worker/gpu/cudagraph_utils.py", asu:"vllm/v1/worker/gpu/async_utils.py", smp:"vllm/v1/worker/gpu/sample/sampler.py", gum:"vllm/v1/worker/gpu/sample/gumbel.py",
+  so:"vllm/v1/worker/gpu/structured_outputs.py", rs:"vllm/v1/worker/gpu/spec_decode/rejection_sampler.py", spc:"vllm/v1/worker/gpu/spec_decode/speculator.py",
+  enc:"vllm/v1/worker/gpu/mm/encoder_runner.py", fc:"vllm/forward_context.py", ll:"vllm/model_executor/models/llama.py", mix:"vllm/model_executor/models/mixtral.py",
+  fmoe:"vllm/model_executor/layers/fused_moe/layer.py", act:"vllm/model_executor/layers/activation.py", att:"vllm/model_executor/layers/attention/attention.py",
+  lp:"vllm/model_executor/layers/logits_processor.py", fa:"vllm/v1/attention/backends/flash_attn.py", fi:"vllm/v1/attention/backends/flashinfer.py",
+  tr:"vllm/v1/attention/backends/triton_attn.py", pcu:"vllm/platforms/cuda.py", sel:"vllm/v1/attention/selector.py", vc:"vllm/config/vllm.py",
+  comp:"vllm/config/compilation.py", scfg:"vllm/config/scheduler.py", cache:"vllm/config/cache.py", ag:"vllm/engine/arg_utils.py"
+};
+const DIRS = { abdir:"vllm/v1/attention/backends" };
+const LANES = [
+  {id:"client",  name:"Client", c:"--c-client", sub:"caller"},
+  {id:"http",    name:"API server", c:"--c-http", sub:"uvicorn · API process"},
+  {id:"serve",   name:"Serve & render", c:"--c-serve", sub:"API process"},
+  {id:"build",   name:"Request build", c:"--c-build", sub:"API process"},
+  {id:"eclient", name:"Engine client", c:"--c-eclient", sub:"AsyncLLM · API process"},
+  {id:"core",    name:"Engine core", c:"--c-core", sub:"EngineCore process"},
+  {id:"sched",   name:"Scheduler & KV", c:"--c-sched", sub:"EngineCore process"},
+  {id:"runner",  name:"Worker & runner", c:"--c-runner", sub:"Model Runner V2"},
+  {id:"model",   name:"Model forward", c:"--c-model", sub:"Llama · torch.compile"},
+  {id:"kern",    name:"GPU kernels", c:"--c-kern", sub:"attention & GEMMs"},
+  {id:"samp",    name:"Sampling", c:"--c-samp", sub:"on GPU"},
+  {id:"upd",     name:"Update & stop", c:"--c-upd", sub:"EngineCore process"},
+  {id:"out",     name:"Detokenize & stream", c:"--c-out", sub:"→ API process"},
+  {id:"client2", name:"Client", c:"--c-client", sub:"SSE consumer"},
+];
+/* process boundaries: vertical dividers drawn between these columns */
+const BOUNDS = [{after:4, label:"ZMQ → EngineCore process"},{after:11, label:"ZMQ → API process"}];
+
+/* k: hot | branch | backend | startup.  col,row = grid position.  f/l = file key + line, x = text expected on that line (verified). */
+const N = [
+/* ---------- startup ---------- */
+{id:"s_cli",col:1,row:0,k:"startup",t:"vllm serve",fn:"uvloop.run(run_server(args))",f:"cli",l:156,x:"uvloop.run(run_server(args))",
+ n:"Parse flags and bind the listening socket early, but don't serve HTTP until the engine is ready.",
+ d:"The CLI binds the port with setup_server, then builds the engine inside build_async_engine_client. The FastAPI app is only built and handed to uvicorn after the engine reports ready, which is the opposite order from llama-server.",
+ c:[["uvloop.run(run_server(args))","cli",156,"uvloop.run(run_server(args))"],["setup_server (bind socket)","lch",252,"def setup_server"],["async with build_async_engine_client(…)","ent",188,"async with build_async_engine_client("]]},
+{id:"s_async",col:2,row:0,k:"startup",t:"Create AsyncLLM",fn:"AsyncLLM.from_vllm_config",f:"ent",l:95,x:"AsyncLLM.from_vllm_config(",
+ n:"Engine config, renderer, input/output processors, and a ZMQ client to a new engine process.",
+ d:"create_engine_config resolves every default (V2 runner, async scheduling, chunked prefill, prefix caching). AsyncLLM then builds the InputProcessor and OutputProcessor that stay in the API process and calls make_async_mp_client, which spawns the EngineCore process and waits for its READY message.",
+ c:[["AsyncLLM.from_vllm_config(…)","ent",95,"AsyncLLM.from_vllm_config("],["InputProcessor(vllm_config, renderer)","al",157,"InputProcessor("],["EngineCoreClient.make_async_mp_client","al",180,"make_async_mp_client("],["async_scheduling default → True","vc",1645,"async_scheduling = True"]]},
+{id:"s_load",col:3,row:0,k:"startup",t:"Spawn core & load model",fn:"launch_core_engines → EngineCore.__init__",f:"core",l:140,x:"self.model_executor = executor_class(vllm_config)",
+ n:"A separate process starts, creates the executor and GPU worker, and loads the weights.",
+ d:"launch_core_engines starts EngineCoreProc.run_engine_core in a new process. EngineCore.__init__ builds the executor (UniProcExecutor on one GPU), which creates the Worker and its GPUModelRunner. load_model resolves LlamaForCausalLM from the model registry and loads the safetensors weights onto the GPU.",
+ c:[["launch_core_engines","eu",1147,"def launch_core_engines"],["target=EngineCoreProc.run_engine_core","eu",251,"target=EngineCoreProc.run_engine_core"],["model_executor = executor_class(vllm_config)","core",140,"self.model_executor = executor_class"],["model_loader.load_model(…)","mr",379,"self.model = model_loader.load_model("]]},
+{id:"s_kv",col:4,row:0,k:"startup",t:"Size KV cache & warm up",fn:"EngineCore._initialize_kv_caches",f:"core",l:255,x:"def _initialize_kv_caches",
+ n:"Profile peak memory, give the rest (up to 92% of the GPU) to KV blocks, compile and capture CUDA graphs.",
+ d:"A dummy forward pass measures peak activation memory. What remains under gpu_memory_utilization becomes paged KV-cache blocks of 16 tokens each. compile_or_warm_up_model then runs torch.compile and captures CUDA graphs for the batch sizes it expects, so the first real request doesn't pay that cost.",
+ c:[["determine_available_memory()","core",309,"determine_available_memory()"],["get_kv_cache_configs(…)","core",320,"kv_cache_configs = get_kv_cache_configs("],["compile_or_warm_up_model()","core",357,"compile_or_warm_up_model()"],["gpu_memory_utilization = 0.92","cache",101,"gpu_memory_utilization: float = Field(default=0.92"]]},
+{id:"s_loop",col:5,row:0,k:"startup",t:"Busy loop, then HTTP",fn:"run_busy_loop · build_app · serve_http",f:"core",l:1422,x:"engine_core.run_busy_loop()",
+ n:"The engine process starts its loop; only then does the API process start uvicorn.",
+ d:"The EngineCore process starts its input and output socket threads and enters run_busy_loop, which it never leaves. Back in the API process, build_app registers the routes, init_app_state creates OpenAIServingChat, and serve_http starts uvicorn on port 8000.",
+ c:[["engine_core.run_busy_loop()","core",1422,"engine_core.run_busy_loop()"],["app = build_app(…)","ent",136,"app = build_app("],["init_app_state(…)","ent",137,"await init_app_state("],["serve_http(app, …)","ent",141,"return await serve_http("]]},
+
+/* ---------- client & API server ---------- */
+{id:"client",col:0,row:2,k:"hot",t:"Client request",fn:"POST /v1/chat/completions",f:null,
+ n:"Any OpenAI-compatible client: curl, an SDK, or a router pointed at :8000/v1.",
+ d:"The request carries chat messages, optional sampling parameters, and stream:true. Everything that follows is what vLLM does to turn that JSON into a stream of tokens, across two processes.",
+ p:`POST /v1/chat/completions
+{
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "messages": [
+    {"role": "user", "content": "Why is the sky blue?"}
+  ],
+  "stream": true,
+  "max_tokens": 128
+}`},
+{id:"http_srv",col:1,row:2,k:"hot",t:"uvicorn + FastAPI",fn:"NoSignalServer · asyncio event loop",f:"lch",l:94,x:"config = uvicorn.Config(app, **uvicorn_kwargs)",
+ n:"One asyncio event loop (uvloop) in the API process handles every connection.",
+ d:"Unlike llama-server there is no thread per request. uvicorn parses HTTP on a single uvloop event loop, and every request is an asyncio task. Anything CPU-heavy (templating, tokenizing) is pushed to thread pools so the loop stays responsive.",
+ c:[["uvicorn.Config(app, …)","lch",94,"config = uvicorn.Config("],["server = NoSignalServer(config)","lch",99,"server = NoSignalServer(config)"],["server.serve(sockets=[sock])","lch",110,"server.serve(sockets="]],
+ p:`<span class="c"># new asyncio task on the API process event loop</span>
+headers parsed, body = 158 bytes JSON`},
+{id:"routes",col:1,row:3,k:"hot",t:"Route + validation",fn:'@router.post("/v1/chat/completions")',f:"ar",l:41,x:'@router.post(',
+ n:"Pydantic validates the body into ChatCompletionRequest. with_cancellation watches for disconnects.",
+ d:"FastAPI matches the path, validate_json_request checks the content type, and the body is parsed into a ChatCompletionRequest pydantic model. with_cancellation races the handler against a disconnect listener, so a client that hangs up cancels the work.",
+ c:[["@router.post(\"/v1/chat/completions\")","ar",41,"@router.post("],["validate_json_request","au",350,"async def validate_json_request"],["with_cancellation","au",51,"def with_cancellation"],["class ChatCompletionRequest","cp",214,"class ChatCompletionRequest"]]},
+
+/* ---------- serve & render ---------- */
+{id:"h_chat",col:2,row:2,k:"hot",t:"Chat handler",fn:"OpenAIServingChat._create_chat_completion",f:"cs",l:274,x:"async def _create_chat_completion",
+ n:"Render the messages into token ids, build SamplingParams, open a generator on the engine.",
+ d:"The route calls handler.create_chat_completion. The serving class sets up the reasoning/tool parser if one is configured, renders the chat into engine inputs, builds a request id (chatcmpl-…), then calls engine_client.generate and, because stream is true, returns an async generator of SSE strings.",
+ c:[["create_chat_completion route","ar",54,"async def create_chat_completion"],["result = await self.render_chat_request(request)","cs",286,"result = await self.render_chat_request(request)"],["request_id = f\"chatcmpl-…\"","cs",293,"f\"chatcmpl-{"]]},
+{id:"render",col:2,row:3,k:"hot",t:"Parse chat messages",fn:"OnlineRenderer.render_chat → parse_chat_messages_async",f:"orr",l:212,x:"async def render_chat",
+ n:"Normalize message content, collect images/audio, pick the template content format.",
+ d:"The renderer validates tool choice, then parse_chat_messages_async turns OpenAI message parts into a conversation list. Image, audio or video parts are pulled out as multimodal data. Text-only chats skip all of that.",
+ c:[["OnlineRenderer.render_chat","orr",212,"async def render_chat"],["BaseRenderer.render_chat_async","rb",1327,"async def render_chat_async"],["parse_chat_messages_async","cu",2268,"async def parse_chat_messages_async"]]},
+{id:"tmpl",col:2,row:4,k:"hot",t:"Chat template",fn:"safe_apply_chat_template (thread pool)",f:"hf",l:1167,x:"prompt_raw = await self._render_with_timeout(",
+ n:"The model's Jinja template from tokenizer_config.json turns the conversation into prompt text.",
+ d:"HfRenderer runs the Hugging Face tokenizer's apply_chat_template. It is wrapped with make_async, so the Jinja rendering happens on a worker thread instead of blocking the event loop. Llama 3.1's template adds a default system header with a knowledge-cutoff date.",
+ c:[["prompt_raw = await self._render_with_timeout(…)","hf",1167,"prompt_raw = await self._render_with_timeout("],["make_async(safe_apply_chat_template)","hf",965,"self._apply_chat_template_async = make_async("],["tokenizer.apply_chat_template(…)","hf",826,"tokenizer.apply_chat_template("]],
+ p:`<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+Why is the sky blue?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+`},
+{id:"tok",col:2,row:5,k:"hot",t:"Tokenizer",fn:"tokenize_prompts_async → _tokenize_prompt",f:"rb",l:727,x:"prompt = await self._tokenize_prompt_async(prompt, params)",
+ n:"Prompt text → token ids with the HF fast tokenizer, on the renderer's thread pool.",
+ d:"Tokenization is offloaded to the renderer's executor, so many concurrent requests can tokenize in parallel while the event loop keeps serving. Special markers like <|eot_id|> become single token ids.",
+ c:[["tokenize_prompts_async","rb",805,"async def tokenize_prompts_async"],["await self._tokenize_prompt_async(…)","rb",727,"await self._tokenize_prompt_async"],["make_async(self._tokenize_prompt, executor)","rb",155,"self._tokenize_prompt_async = make_async("]],
+ p:`[128000, 128006, 9125, 128007, 271, 38766, 1303, 33025,
+ 2696, 25, 6790, 220, 2366, 18, 198, 15724, …,
+ 128006, 78191, 128007, 271]
+n_tokens = 41   <span class="c"># ids and count illustrative</span>`},
+{id:"eng_in",col:2,row:6,k:"hot",t:"Engine input",fn:"process_for_engine_async",f:"rb",l:1211,x:"async def process_for_engine_async",
+ n:"Wrap token ids (and any processed media) into an EngineInput with an arrival time.",
+ d:"The tokenized prompt becomes a typed EngineInput dict. For multimodal prompts this is where the HF processor runs, on a separate single-worker executor. arrival_time is stamped here and later drives queue-time metrics.",
+ c:[["process_for_engine_async","rb",1211,"async def process_for_engine_async"],["engine_input[\"arrival_time\"] = arrival_time","rb",1230,"engine_input[\"arrival_time\"] = arrival_time"]],
+ p:`{"type": "token", "prompt_token_ids": [128000, …, 271],
+ "arrival_time": 1791155520.41}`},
+{id:"r_comp",col:2,row:8,k:"branch",t:"Completions route",fn:"POST /v1/completions",f:"cmp",l:47,x:"async def create_completion",
+ n:"A raw prompt string or token ids. No chat template; same engine path afterwards.",
+ d:"OpenAIServingCompletion renders the prompt with render_cmpl (tokenize only) and calls the same engine_client.generate. From AsyncLLM onward the request is indistinguishable from a chat request.",
+ c:[["create_completion route","cmp",47,"async def create_completion"]]},
+{id:"r_other",col:2,row:9,k:"branch",t:"Messages & Responses APIs",fn:"POST /v1/messages · /v1/responses",f:"anth",l:51,x:"@router.post(",
+ n:"Anthropic-style and Responses requests, converted onto the same render and generate path.",
+ d:"Each has its own router and serving class but reuses the renderer, AsyncLLM and the engine core. Only the request translation and the outgoing event format differ.",
+ c:[["/v1/messages","anth",52,"\"/v1/messages\""],["/v1/responses","resp",49,"\"/v1/responses\""]]},
+{id:"r_embd",col:2,row:10,k:"branch",t:"Embeddings & pooling",fn:"POST /v1/embeddings",f:"emb",l:28,x:"@router.post(",
+ n:"Pooling models: same scheduler and runner, but a pooler replaces the sampler.",
+ d:"PoolingParams instead of SamplingParams. The scheduler batches them like prefills; the runner calls pool() instead of sample_tokens, and no tokens are generated. Async scheduling is off by default for pooling models.",
+ c:[["/v1/embeddings","emb",29,"\"/v1/embeddings\""],["pooling disables async scheduling","vc",1597,"async_scheduling = False"]]},
+{id:"mm",col:3,row:8,k:"branch",t:"Multimodal processing",fn:"_process_multimodal (mm executor)",f:"rb",l:894,x:"def _process_multimodal",
+ n:"Images/audio run through the HF processor; placeholder tokens are inserted for the encoder output.",
+ d:"For a vision or audio model the renderer runs the model's processor on a dedicated single-thread executor, expands placeholder tokens in the prompt, and hashes the media for the encoder cache. On the GPU, EncoderRunner encodes it before the language model runs.",
+ c:[["_process_multimodal","rb",894,"def _process_multimodal"],["EncoderRunner.execute_mm_encoder","enc",150,"def execute_mm_encoder"]]},
+
+/* ---------- request build ---------- */
+{id:"sparams",col:3,row:2,k:"hot",t:"Sampling params",fn:"get_max_tokens · to_sampling_params",f:"cs",l:338,x:"sampling_params = request.to_sampling_params(",
+ n:"OpenAI fields → SamplingParams, with defaults from the model's generation_config.json.",
+ d:"max_tokens is clamped to what fits in max_model_len after the prompt. Fields the request left out come from default_sampling_params, which (with --generation-config auto, the default) is read from the model's generation_config.json. For Llama 3.1 Instruct that means temperature 0.6 and top_p 0.9, not vLLM's neutral 1.0.",
+ c:[["max_tokens = get_max_tokens(…)","cs",321,"max_tokens = get_max_tokens("],["request.to_sampling_params(…)","cs",338,"request.to_sampling_params("],["default_sampling_params = get_diff_sampling_param()","cs",175,"self.default_sampling_params = self.model_config.get_diff_sampling_param()"],["ChatCompletionRequest.to_sampling_params","cp",662,"def to_sampling_params"]],
+ p:`SamplingParams(n=1, max_tokens=128,
+  temperature=0.6, top_p=0.9, top_k=0,
+  output_kind=DELTA)
+<span class="c"># temperature/top_p from generation_config.json;
+# its extra EOS ids become stop_token_ids in the engine</span>`},
+{id:"gen",col:3,row:3,k:"hot",t:"Open the result stream",fn:"engine_client.generate(…) → stream generator",f:"cs",l:379,x:"generator = self.engine_client.generate(",
+ n:"Returns at once. The route wraps the generator in a StreamingResponse.",
+ d:"engine_client is the AsyncLLM in this same process, reached through the EngineClient protocol. Nothing runs until the stream generator is iterated: the route returns a StreamingResponse, uvicorn starts sending headers, and the first iteration calls AsyncLLM.generate.",
+ c:[["self.engine_client.generate(…)","cs",379,"self.engine_client.generate("],["return self.chat_completion_stream_generator(…)","cs",404,"return self.chat_completion_stream_generator("],["StreamingResponse(…)","ar",77,"return StreamingResponse("]]},
+{id:"nfan",col:3,row:9,k:"branch",t:"n > 1 fan-out",fn:"ParentRequest → child requests",f:"al",l:508,x:"parent_request = ParentRequest(request)",
+ n:"n choices become n separate engine requests that share the prompt's KV blocks.",
+ d:"Each child gets its own request id and sampling params. Prefix caching lets every child after the first reuse the prompt's KV blocks, so the prompt is effectively computed once.",
+ c:[["ParentRequest(request)","al",508,"ParentRequest(request)"]]},
+
+/* ---------- engine client (AsyncLLM) ---------- */
+{id:"add_req",col:4,row:2,k:"hot",t:"AsyncLLM.generate",fn:"generate → add_request",f:"al",l:673,x:"async def generate",
+ n:"Register the request, send it to the engine, then wait on its own output queue.",
+ d:"generate awaits add_request and then loops on the request's RequestOutputCollector, yielding each RequestOutput to the serving layer until one is marked finished. If the client disconnects, the generator is cancelled and the request is aborted in the engine.",
+ c:[["AsyncLLM.generate","al",673,"async def generate"],["q = await self.add_request(…)","al",720,"q = await self.add_request("],["AsyncLLM.add_request","al",374,"async def add_request"]]},
+{id:"inproc",col:4,row:3,k:"hot",t:"Input processor",fn:"InputProcessor.process_inputs → EngineCoreRequest",f:"ip",l:339,x:"def process_inputs",
+ n:"Validate params against the model and pack everything into one msgpack-friendly struct.",
+ d:"Checks sampling params (logprobs limits, structured output support), LoRA and prompt length against max_model_len, then builds an EngineCoreRequest. assign_request_id appends 8 random characters to the id so duplicate client ids can't collide inside the engine.",
+ c:[["process_inputs","ip",339,"def process_inputs"],["return EngineCoreRequest(…)","ip",500,"return EngineCoreRequest("],["assign_request_id","ip",320,"def assign_request_id"]],
+ p:`EngineCoreRequest(request_id="chatcmpl-9f…-a1b2c3d4",
+  prompt_token_ids=[…41 ids…], sampling_params=…,
+  arrival_time=…, priority=0)`},
+{id:"outreg",col:4,row:4,k:"hot",t:"Register output state",fn:"OutputProcessor.add_request",f:"al",l:547,x:"self.output_processor.add_request(request, prompt, parent_req, index, queue)",
+ n:"Create the per-request detokenizer and the collector that generate() will wait on.",
+ d:"RequestState holds an IncrementalDetokenizer and a logprobs processor for this request. RequestOutputCollector is a one-slot mailbox: if outputs arrive faster than the HTTP side consumes them, DELTA outputs are merged instead of queued. The background output_handler task is started on the first request ever.",
+ c:[["output_processor.add_request(…)","al",547,"self.output_processor.add_request("],["OutputProcessor.add_request","op",592,"def add_request"],["IncrementalDetokenizer.from_new_request","op",257,"IncrementalDetokenizer.from_new_request("],["self._run_output_handler()","al",492,"self._run_output_handler()"]]},
+{id:"zmq_in",col:4,row:5,k:"hot",t:"Send to engine core",fn:"AsyncMPClient.add_request_async",f:"cc",l:1276,x:"async def add_request_async",
+ n:"msgpack-encode the request and push it over a ZMQ socket to the EngineCore process.",
+ d:"The request is serialized with a msgpack encoder (large tensors go zero-copy as extra frames) and sent with send_multipart on a ROUTER socket. The API process never touches the GPU, so tokenizing and HTTP work never compete with scheduling for the Python GIL.",
+ c:[["add_request_async","cc",1276,"async def add_request_async"],["_send_input(ADD, request)","cc",1278,"await self._send_input(EngineCoreRequestType.ADD, request)"],["input_socket.send_multipart(…)","cc",1237,"self.input_socket.send_multipart("]]},
+
+/* ---------- engine core ---------- */
+{id:"in_thread",col:5,row:2,k:"hot",t:"Input socket thread",fn:"process_input_sockets → preprocess_add_request",f:"core",l:1757,x:"def process_input_sockets",
+ n:"A dedicated thread decodes the request and builds the scheduler's Request object.",
+ d:"This IO thread runs beside the busy loop, so decoding overlaps with GPU work. preprocess_add_request turns the EngineCoreRequest into a Request and computes block hashes for every full 16-token block of the prompt, which prefix caching uses later. Grammar compilation for structured output also starts here.",
+ c:[["process_input_sockets","core",1757,"def process_input_sockets"],["add_request_decoder.decode(data_frames)","core",1827,"add_request_decoder.decode(data_frames)"],["Request.from_engine_core_request","core",1063,"Request.from_engine_core_request("],["input_queue.put_nowait(…)","core",1857,"self.input_queue.put_nowait((request_type, request))"]],
+ p:`Request chatcmpl-…  41 prompt tokens
+block_hashes: [h0, h1]   <span class="c"># 2 full blocks; tokens 32–40 not hashed yet</span>`},
+{id:"core_add",col:5,row:3,k:"hot",t:"Add to scheduler",fn:"EngineCore.add_request → Scheduler.add_request",f:"core",l:526,x:"self.scheduler.add_request(request)",
+ n:"The busy loop drains the input queue and puts the request in the WAITING queue.",
+ d:"_process_input_queue pulls everything off input_queue between engine steps. _handle_client_request dispatches ADD to EngineCore.add_request, which validates and hands the request to the scheduler. Scheduler.add_request enqueues it as WAITING.",
+ c:[["_process_input_queue","core",1499,"def _process_input_queue"],["_handle_client_request (ADD)","core",1606,"EngineCoreRequestType.ADD"],["self.scheduler.add_request(request)","core",526,"self.scheduler.add_request(request)"],["Scheduler.add_request","sch",2568,"def add_request"]],
+ p:`waiting: [chatcmpl-…]   running: []`},
+{id:"stepq",col:5,row:4,k:"hot",t:"Engine step",fn:"run_busy_loop → step_with_batch_queue",f:"core",l:670,x:"def step_with_batch_queue",
+ n:"Schedule a batch, launch it on the GPU without waiting, and only block when two batches are in flight.",
+ d:"Async scheduling is on by default, so step_fn is step_with_batch_queue with a queue of 2. Each call schedules and launches a new batch and returns immediately if there is room. Only when the queue is full does it block on the oldest batch's result. The CPU prepares step N+1 while the GPU is still running step N.",
+ c:[["run_busy_loop","core",1473,"def run_busy_loop"],["outputs, model_executed = self.step_fn()","core",1532,"outputs, model_executed = self.step_fn()"],["step_with_batch_queue","core",670,"def step_with_batch_queue"],["max_concurrent_batches (async → 2)","vc",592,"def max_concurrent_batches"]]},
+
+/* ---------- scheduler & KV ---------- */
+{id:"sched",col:6,row:2,k:"hot",t:"Schedule",fn:"Scheduler.schedule",f:"sch",l:571,x:"def schedule",
+ n:"Spend a token budget: running requests first, then admit waiting ones.",
+ d:"There are no separate prefill and decode phases. Each step has a budget of max_num_batched_tokens (8192 on an H100). Running requests are served first, usually one decode token each; the rest of the budget admits waiting requests' prompt tokens. Prefill and decode tokens share one flattened batch.",
+ c:[["Scheduler.schedule","sch",571,"def schedule"],["token_budget = self.max_num_scheduled_tokens","sch",591,"token_budget = self.max_num_scheduled_tokens"],["# First, schedule the RUNNING requests.","sch",637,"# First, schedule the RUNNING requests."],["H100 API-server default: 8192 tokens","ag",2891,"UsageContext.OPENAI_API_SERVER: 8192"]]},
+{id:"waiting",col:6,row:3,k:"hot",t:"Admit waiting request",fn:"# Next, schedule the WAITING requests.",f:"sch",l:881,x:"# Next, schedule the WAITING requests.",
+ n:"Pop from the waiting queue while there is budget and KV space.",
+ d:"For each waiting request the scheduler checks the per-step limits, looks up the prefix cache, decides how many prompt tokens to compute this step (chunked prefill can split a long prompt across steps), and asks the KV cache manager for blocks. On success the request moves to running.",
+ c:[["# Next, schedule the WAITING requests.","sch",881,"# Next, schedule the WAITING requests."],["num_new_tokens = request.num_tokens - num_computed_tokens","sch",1096,"num_new_tokens = request.num_tokens - num_computed_tokens"],["self.running.append(request)","sch",1301,"self.running.append(request)"],["request.status = RequestStatus.RUNNING","sch",1324,"request.status = RequestStatus.RUNNING"]]},
+{id:"pcache",col:6,row:4,k:"hot",t:"Prefix cache lookup",fn:"KVCacheManager.get_computed_blocks",f:"kvm",l:264,x:"def get_computed_blocks",
+ n:"Find the longest run of full blocks whose hashes are already in the KV cache.",
+ d:"Every full 16-token block has a hash chained from the previous block's hash. find_longest_cache_hit walks those hashes and reuses any block another request already computed, without copying. At least the last prompt token is always recomputed so there are logits to sample from.",
+ c:[["get_computed_blocks","kvm",264,"def get_computed_blocks"],["max_cache_hit_length = request.num_tokens - 1","kvm",295,"max_cache_hit_length = request.num_tokens - 1"],["coordinator.find_longest_cache_hit(…)","kvm",297,"self.coordinator.find_longest_cache_hit("],["hash_block_tokens","kvu",684,"def hash_block_tokens"]],
+ p:`first request: 0 cached tokens
+<span class="c"># block 0 is just the default system header, so a later</span>
+<span class="c"># request that starts the same way gets it for free</span>`},
+{id:"alloc",col:6,row:5,k:"hot",t:"Allocate KV blocks",fn:"KVCacheManager.allocate_slots",f:"kvm",l:371,x:"def allocate_slots",
+ n:"Take free 16-token blocks from the block pool. If there are none, preempt someone.",
+ d:"allocate_slots works out how many new blocks the scheduled tokens need, then takes them from BlockPool's free list (least recently used first). If the pool is empty for a running request, the scheduler preempts the lowest-priority running request, frees its blocks and retries.",
+ c:[["allocate_slots","kvm",371,"def allocate_slots"],["coordinator.allocate_new_blocks(…)","kvm",595,"self.coordinator.allocate_new_blocks("],["BlockPool.get_new_blocks","bp",669,"def get_new_blocks"],["call site (waiting request)","sch",1222,"new_blocks = self.kv_cache_manager.allocate_slots("]],
+ p:`41 tokens → 3 blocks: [#5012, #5013, #5014]
+block #5014 has 9/16 slots used`},
+{id:"sout",col:6,row:6,k:"hot",t:"SchedulerOutput",fn:"SchedulerOutput(…) · _update_after_schedule",f:"sch",l:1471,x:"scheduler_output = SchedulerOutput(",
+ n:"What runs this step: new requests in full, running ones as small diffs. Placeholders reserve the next token.",
+ d:"New requests are sent with prompt ids and block ids (NewRequestData); requests the worker already knows only send what changed (CachedRequestData). AsyncScheduler then adds an output placeholder per scheduled request: the token this step will produce is counted as computed before it exists, so the next step can be scheduled without waiting.",
+ c:[["NewRequestData.from_request","sch",1392,"NewRequestData.from_request("],["scheduler_output = SchedulerOutput(…)","sch",1471,"scheduler_output = SchedulerOutput("],["AsyncScheduler._update_after_schedule","asch",25,"def _update_after_schedule"],["num_output_placeholders += …","asch",45,"request.num_output_placeholders +="]],
+ p:`scheduled_new_reqs: [chatcmpl-… 41 tokens, blocks 5012–5014]
+num_scheduled_tokens: {chatcmpl-…: 41}   total 41`},
+{id:"chunk",col:6,row:8,k:"branch",t:"Chunked prefill",fn:"long_prefill_token_threshold · token_budget",f:"sch",l:1122,x:"if 0 < long_prefill_token_threshold < num_new_tokens:",
+ n:"A prompt bigger than the remaining budget is split across several steps.",
+ d:"Chunked prefill is on by default. A long prompt gets only as many tokens as fit in this step's budget, and the rest are scheduled on later steps, mixed with other requests' decode tokens. This keeps decode latency steady while big prompts are processed.",
+ c:[["long_prefill_token_threshold cap","sch",1122,"long_prefill_token_threshold < num_new_tokens"],["num_new_tokens = min(…, request_token_budget)","sch",1136,"num_new_tokens = min(num_new_tokens, request_token_budget)"],["enable_chunked_prefill = True","scfg",135,"enable_chunked_prefill: bool = True"]]},
+{id:"preempt",col:6,row:9,k:"branch",t:"Preemption",fn:"Scheduler._preempt_request",f:"sch",l:1542,x:"def _preempt_request",
+ n:"Out of KV blocks: free a running request's blocks and send it back to waiting.",
+ d:"When a running request needs a new block and none are free, the lowest-priority running request (the newest, under FCFS) is preempted. Its blocks are freed and it re-enters the waiting queue; when rescheduled, prefix caching often recovers much of its old KV.",
+ c:[["_preempt_request","sch",1542,"def _preempt_request"],["call site in running loop","sch",814,"self._preempt_request("]]},
+{id:"kvconn",col:6,row:10,k:"branch",t:"KV connector",fn:"_build_kv_connector_meta",f:"sch",l:1500,x:"meta = self._build_kv_connector_meta(self.connector, scheduler_output)",
+ n:"Disaggregated prefill/decode or KV offload: plan KV loads and saves for this step.",
+ d:"With --kv-transfer-config, a connector (NIXL, LMCache, offloading…) lets KV blocks come from another instance or from CPU or disk. The scheduler attaches the load/save plan to SchedulerOutput and the worker carries it out around the forward pass.",
+ c:[["connector metadata","sch",1500,"self._build_kv_connector_meta("]]},
+
+/* ---------- worker & runner ---------- */
+{id:"exec",col:7,row:2,k:"hot",t:"Executor",fn:"UniProcExecutor.execute_model(non_block=True)",f:"upe",l:119,x:"def execute_model",
+ n:"One GPU: call the worker directly in this process and wrap the result in a Future.",
+ d:"UniProcExecutor calls the driver worker in the same EngineCore process. The Python call returns as soon as the CUDA kernels are queued. The result is an AsyncOutputFuture that resolves when the GPU finishes, which the batch queue waits on later.",
+ c:[["UniProcExecutor.execute_model","upe",119,"def execute_model"],["AsyncOutputFuture(result, …)","upe",111,"return AsyncOutputFuture(result, single_value)"],["exec_future = execute_model(…, non_block=True)","core",699,"exec_future = self.model_executor.execute_model("]]},
+{id:"worker",col:7,row:3,k:"hot",t:"GPU worker",fn:"Worker.execute_model",f:"gw",l:1257,x:"def execute_model",
+ n:"Owns the device. Handles pipeline-parallel hand-offs, then calls the model runner.",
+ d:"The Worker binds the process to its GPU and owns the model runner. On a single GPU it simply forwards the SchedulerOutput. With pipeline parallelism it would also receive and send intermediate tensors here.",
+ c:[["Worker.execute_model","gw",1257,"def execute_model"],["self.model_runner.execute_model(…)","gw",1318,"self.model_runner.execute_model("],["use_v2_model_runner","vc",716,"def use_v2_model_runner"]]},
+{id:"upd_state",col:7,row:4,k:"hot",t:"Update batch state",fn:"add_requests · update_requests · block_tables",f:"mr",l:1715,x:"self.add_requests(scheduler_output)",
+ n:"Sync the runner's persistent per-request state with what the scheduler decided.",
+ d:"The runner keeps request state (prompt ids, sampling settings, block tables) in persistent GPU buffers. finish_requests and free_states drop finished ones, add_requests copies in new requests, update_requests applies new block ids, and staged block-table writes are flushed to the GPU.",
+ c:[["self.add_requests(scheduler_output)","mr",1715,"self.add_requests(scheduler_output)"],["self.update_requests(scheduler_output)","mr",1716,"self.update_requests(scheduler_output)"],["block_tables.apply_staged_writes()","mr",1717,"self.block_tables.apply_staged_writes()"],["GPUModelRunner.execute_model","mr",1699,"def execute_model"]]},
+{id:"prep",col:7,row:5,k:"hot",t:"Prepare inputs",fn:"prepare_inputs → combine_sampled_and_draft_tokens",f:"mr",l:1792,x:"input_batch = self.prepare_inputs(",
+ n:"Flatten every scheduled token into input_ids and positions, and pick which rows need logits.",
+ d:"query_start_loc marks where each request's tokens start in the flat batch. Prompt tokens are copied into input_ids; for decode, combine_sampled_and_draft_tokens reads the previous step's sampled token straight from GPU memory. logits_indices selects only the last token of each request for sampling.",
+ c:[["input_batch = self.prepare_inputs(…)","mr",1792,"self.prepare_inputs("],["query_start_loc (cumsum)","mr",1410,"np.cumsum(num_scheduled_tokens_np"],["logits_indices = combine_sampled_and_draft_tokens(…)","mr",1452,"logits_indices = combine_sampled_and_draft_tokens("],["combine_sampled_and_draft_tokens","ib",465,"def combine_sampled_and_draft_tokens"]],
+ p:`input_ids:  [128000, 128006, …, 271]    (41)
+positions:  [0, 1, …, 40]
+query_start_loc: [0, 41]   logits_indices: [40]`},
+{id:"attn_meta",col:7,row:6,k:"hot",t:"Attention metadata",fn:"prepare_attn → build_attn_metadata",f:"mr",l:1795,x:"block_tables, slot_mappings = self.prepare_attn(input_batch)",
+ n:"Block tables and slot mapping tell attention where each token's K/V lives in the paged cache.",
+ d:"slot_mapping gives, for every token in the batch, the physical cache slot (block id × 16 + offset) its K and V will be written to. The block table lists each request's blocks in order so attention can read its history. The backend's metadata builder packages these with sequence lengths.",
+ c:[["prepare_attn(input_batch)","mr",1795,"self.prepare_attn(input_batch)"],["model_state.prepare_attn(…)","mr",1893,"attn_metadata = self.model_state.prepare_attn("],["build_attn_metadata(…)","msd",213,"attn_metadata = build_attn_metadata("],["FlashAttentionMetadataBuilder.build","fa",815,"def build("]],
+ p:`slot_mapping: [80192, 80193, …, 80232]
+block_table[0]: [5012, 5013, 5014]   seq_lens: [41]`},
+{id:"cg",col:7,row:7,k:"hot",t:"Run the model",fn:"set_forward_context · CUDA graph dispatch",f:"mr",l:2000,x:"with set_forward_context(",
+ n:"Prefill: piecewise CUDA graphs around eager attention. Pure decode: replay one full CUDA graph.",
+ d:"The default mode is FULL_AND_PIECEWISE. A batch with prefill tokens runs the torch.compile'd model as captured pieces with attention in between (PIECEWISE). A batch of only decode tokens replays a FULL graph captured at startup, so the whole 32-layer forward is one replay. set_forward_context publishes the attention metadata for every layer to read.",
+ c:[["with set_forward_context(…)","mr",2000,"with set_forward_context("],["cudagraph_manager.run_pw_graph(…)","mr",2025,"self.cudagraph_manager.run_pw_graph("],["cudagraph_manager.run_fullgraph(desc)","mr",1991,"self.cudagraph_manager.run_fullgraph(batch_desc)"],["FULL_AND_PIECEWISE is the default","comp",631,"This is the most performant mode for most models and is the default."]],
+ p:`41 prompt tokens → cg_mode PIECEWISE`},
+{id:"mpexec",col:7,row:9,k:"backend",t:"Multi-GPU executor",fn:"MultiprocExecutor (tensor parallel)",f:"mpe",l:111,x:"class MultiprocExecutor",
+ n:"--tensor-parallel-size > 1: one worker process per GPU, driven over a shared-memory broadcast queue.",
+ d:"Every worker runs the same execute_model on its shard of the weights; layers all-reduce over NCCL. Only rank 0's output goes back to the engine core. Ray is the alternative for multi-node.",
+ c:[["MultiprocExecutor","mpe",111,"class MultiprocExecutor"],["execute_model","mpe",340,"def execute_model"]]},
+{id:"encoder",col:7,row:10,k:"branch",t:"Multimodal encoder",fn:"EncoderRunner.execute_mm_encoder",f:"enc",l:150,x:"def execute_mm_encoder",
+ n:"Runs the vision/audio encoder and caches its embeddings before the language model.",
+ d:"Scheduled encoder inputs are encoded once and kept in the encoder cache; their embeddings replace the placeholder tokens' embeddings in the language model's input.",
+ c:[["execute_mm_encoder","enc",150,"def execute_mm_encoder"]]},
+
+/* ---------- model forward ---------- */
+{id:"model",col:8,row:2,k:"hot",t:"LlamaForCausalLM",fn:"LlamaForCausalLM.forward → LlamaModel.forward",f:"ll",l:534,x:"def forward",
+ n:"Embed tokens, run 32 decoder layers, final RMSNorm. Picked from the model registry at load time.",
+ d:"The registry maps the checkpoint's architecture name to vLLM's implementation. LlamaModel is decorated with @support_torch_compile, so the forward is traced and compiled once at startup. All tokens of the batch, prefill and decode alike, go through as one flat [num_tokens, hidden] tensor; there is no batch dimension.",
+ c:[["LlamaForCausalLM.forward","ll",534,"def forward"],["@support_torch_compile","ll",337,"@support_torch_compile"],["embed_input_ids(input_ids)","ll",418,"self.embed_input_ids(input_ids)"],["\"LlamaForCausalLM\" in registry","ll",464,"class LlamaForCausalLM"]],
+ p:`hidden_states: [41, 4096]   <span class="c"># 8B shape, bf16</span>`},
+{id:"layer",col:8,row:3,k:"hot",t:"Decoder layer × 32",fn:"RMSNorm → qkv_proj → RoPE",f:"ll",l:313,x:"def forward",
+ n:"Fused residual-add + RMSNorm, one fused QKV matmul, rotary position embedding.",
+ d:"LlamaDecoderLayer applies input_layernorm (fused with the residual add), then LlamaAttention projects Q, K and V with a single QKVParallelLinear matmul and rotates Q and K with RoPE using each token's position.",
+ c:[["LlamaDecoderLayer.forward","ll",313,"def forward"],["qkv, _ = self.qkv_proj(hidden_states)","ll",229,"qkv, _ = self.qkv_proj(hidden_states)"],["q, k = self.rotary_emb(positions, q, k)","ll",231,"q, k = self.rotary_emb(positions, q, k)"]]},
+{id:"attn_layer",col:8,row:4,k:"hot",t:"Attention layer",fn:"Attention.forward → unified_attention_with_output",f:"att",l:488,x:"def forward",
+ n:"Model-agnostic attention. A custom op looks up this layer's metadata and calls the backend.",
+ d:"self.attn(q, k, v) goes through a registered torch custom op, so attention stays opaque to torch.compile. That is where piecewise CUDA graphs are split. It fetches the batch's attention metadata and this layer's KV cache from the forward context and calls the selected backend's impl.forward.",
+ c:[["self.attn(q, k, v)","ll",232,"self.attn(q, k, v)"],["Attention.forward","att",488,"def forward"],["unified_attention_with_output","att",767,"def unified_attention_with_output"],["backend priority on CUDA","pcu",83,"def _get_backend_priorities"]]},
+{id:"moe",col:8,row:8,k:"branch",t:"Mixture-of-experts",fn:"FusedMoE (Mixtral, Qwen-MoE, DeepSeek…)",f:"mix",l:134,x:"def forward",
+ n:"Router picks top-k experts per token; fused kernels run only those experts.",
+ d:"MoE models replace the dense MLP with a FusedMoE layer: a router computes top-k experts per token, tokens are grouped by expert, and grouped GEMM kernels run each expert on its tokens. With expert parallelism, tokens are exchanged across GPUs with all-to-all.",
+ c:[["MixtralMoE.forward","mix",134,"def forward"],["FusedMoEFactory","fmoe",88,"def FusedMoEFactory"]]},
+
+/* ---------- GPU kernels ---------- */
+{id:"fa_write",col:9,row:2,k:"hot",t:"Write K/V to paged cache",fn:"reshape_and_cache_flash",f:"fa",l:1536,x:"reshape_and_cache_flash(",
+ n:"Scatter this step's keys and values into their slots in the paged KV cache.",
+ d:"Using slot_mapping, each token's K and V vectors are written into the right block and offset of this layer's cache tensor. Blocks don't have to be contiguous; the block table is what links them into a sequence.",
+ c:[["FlashAttentionImpl.forward","fa",1231,"def forward"],["reshape_and_cache_flash(…)","fa",1536,"reshape_and_cache_flash("]],
+ p:`layer 0: 41 × (K,V) → slots 80192…80232`},
+{id:"fa_attn",col:9,row:3,k:"hot",t:"FlashAttention",fn:"flash_attn_varlen_func (paged)",f:"fa",l:1570,x:"flash_attn_varlen_func(",
+ n:"Variable-length attention over every request's cached blocks in one kernel.",
+ d:"cu_seqlens_q describes the flattened batch and block_table locates each request's history, so prefill chunks and single decode tokens from many requests run in one kernel launch. FlashAttention is first in the priority list on Ampere and Hopper; Blackwell (SM100) prefers FlashInfer.",
+ c:[["flash_attn_varlen_func(…)","fa",1570,"flash_attn_varlen_func("],["class FlashAttentionImpl","fa",1106,"class FlashAttentionImpl"],["FLASH_ATTN first on SM80/SM90","pcu",174,"AttentionBackendEnum.FLASH_ATTN,"]]},
+{id:"mlp",col:9,row:4,k:"hot",t:"Output proj + MLP",fn:"o_proj → RMSNorm → gate_up → SiluAndMul → down",f:"ll",l:118,x:"def forward(self, x):",
+ n:"The big GEMMs. They hold most of the weights and dominate time in both prefill and decode.",
+ d:"o_proj maps attention output back to the hidden size, post_attention_layernorm normalizes, then the SwiGLU MLP: one merged gate+up matmul, a fused SiLU-and-multiply kernel, and the down projection. This repeats for all 32 layers before the final norm.",
+ c:[["output, _ = self.o_proj(attn_output)","ll",233,"output, _ = self.o_proj(attn_output)"],["self.mlp(hidden_states)","ll",329,"hidden_states = self.mlp(hidden_states)"],["LlamaMLP.forward","ll",118,"def forward(self, x):"],["SiluAndMul","act",116,"class SiluAndMul"]]},
+{id:"flashinfer",col:9,row:7,k:"backend",t:"FlashInfer",fn:"FlashInferImpl.forward",f:"fi",l:2021,x:"def forward",
+ n:"Default on Blackwell (SM100). Also a fallback when FlashAttention can't serve the config.",
+ d:"Same AttentionImpl interface: write K/V into the paged cache, then run prefill and decode attention kernels (TRT-LLM kernels on SM100).",
+ c:[["FlashInferImpl.forward","fi",2021,"def forward"],["SM100 priority list","pcu",161,"AttentionBackendEnum.FLASHINFER,"]]},
+{id:"triton",col:9,row:8,k:"backend",t:"Triton attention",fn:"TritonAttentionImpl.forward",f:"tr",l:581,x:"def forward",
+ n:"Portable Triton kernels: used on AMD and wherever the others don't apply.",
+ d:"A unified Triton paged-attention kernel. It's the third choice on NVIDIA and the basis for several ROCm paths.",
+ c:[["TritonAttentionImpl.forward","tr",581,"def forward"]]},
+{id:"otherattn",col:9,row:9,k:"backend",t:"Other attention backends",fn:"FlexAttention · MLA · ROCm · CPU…",f:"abdir",
+ n:"Picked once at startup by get_attn_backend from platform, dtype and model type.",
+ d:"DeepSeek-style models use MLA backends (FlashMLA, CUTLASS MLA…); hybrid models add Mamba/linear-attention backends. All implement the same interface, so the model code doesn't change.",
+ c:[["get_attn_backend","sel",105,"def get_attn_backend"]]},
+
+/* ---------- sampling ---------- */
+{id:"logits",col:10,row:2,k:"hot",t:"Logits",fn:"sample_tokens → compute_logits",f:"mr",l:1595,x:"logits = self.model.compute_logits(sample_hidden_states)",
+ n:"Only the last position of each request goes through the LM head.",
+ d:"The engine core calls sample_tokens right after execute_model (both non-blocking). hidden_states are indexed with logits_indices, so for a 41-token prefill only one row is projected through lm_head to 128,256 vocabulary logits.",
+ c:[["GPUModelRunner.sample_tokens","mr",2073,"def sample_tokens"],["sample_hidden_states = hidden_states[logits_indices]","mr",1594,"sample_hidden_states = hidden_states[input_batch.logits_indices]"],["LlamaForCausalLM.compute_logits","ll",546,"def compute_logits"],["LogitsProcessor.forward","lp",98,"def forward"]],
+ p:`logits: [1, 128256] fp32`},
+{id:"sampler",col:10,row:3,k:"hot",t:"Sampler",fn:"bias → penalties → bad words → temp → min_p → top-k/p → draw",f:"smp",l:134,x:"def __call__",
+ n:"Batched over every request on the GPU, each with its own parameters and seed.",
+ d:"Logit bias, repetition/frequency/presence penalties and bad words run first as logits processors, then temperature and min_p in place, then top-k/top-p. The draw uses Gumbel-max sampling (or FlashInfer's fused top-k/top-p sampler when available). Nothing leaves the GPU here.",
+ c:[["Sampler.__call__","smp",134,"def __call__"],["logits processors (bias, penalties, bad words)","smp",71,"self.logits_processors: list[LogitsProcessor] = ["],["apply_temperature · apply_min_p","smp",263,"self.sampling_states.apply_temperature("],["gumbel_sample(…)","smp",346,"sampled = gumbel_sample("]],
+ p:`top candidates: " The" 0.58  " Sky" 0.11  " Light" 0.05
+→ 578 " The"   <span class="c"># illustrative</span>`},
+{id:"async_out",col:10,row:4,k:"hot",t:"Async output copy",fn:"AsyncOutput · postprocess_sampled",f:"mr",l:2168,x:"async_output = AsyncOutput(",
+ n:"Start the GPU→CPU copy on a side stream, and keep the sampled id on the GPU for the next step.",
+ d:"AsyncOutput copies sampled ids to CPU memory on a separate CUDA stream and records an event. postprocess_sampled stores the token in GPU-side request state, which is where the next step's prepare_inputs reads it. The engine core gets a Future and moves on.",
+ c:[["async_output = AsyncOutput(…)","mr",2168,"async_output = AsyncOutput("],["class AsyncOutput","asu",115,"class AsyncOutput"],["self.postprocess_sampled(…)","mr",2201,"self.postprocess_sampled("],["sample_tokens(…, non_block=True)","core",715,"future = self.model_executor.sample_tokens("]]},
+{id:"grammar",col:10,row:7,k:"branch",t:"Structured output",fn:"apply_grammar_bitmask",f:"so",l:95,x:"def apply_grammar_bitmask",
+ n:"JSON schema, regex or tool-call grammars: mask tokens the grammar won't accept.",
+ d:"The grammar is compiled when the request arrives (backend \"auto\", which normally picks xgrammar). Each step the scheduler computes a token bitmask on the CPU and the runner applies it to the logits before sampling. Requests with grammars may defer sampling until the previous token is known.",
+ c:[["apply_grammar_bitmask","so",95,"def apply_grammar_bitmask"],["grammar_init","sou",115,"def grammar_init"],["get_grammar_bitmask","sch",1947,"def get_grammar_bitmask"]]},
+{id:"spec",col:10,row:8,k:"branch",t:"Speculative decoding",fn:"speculator.propose · RejectionSampler",f:"spc",l:74,x:"def propose",
+ n:"EAGLE, MTP, n-gram or a draft model proposes tokens; the target verifies them in one pass.",
+ d:"After sampling, the speculator proposes the next k tokens. Next step they are scheduled as extra tokens, the target model scores them all at once, and the rejection sampler keeps the longest accepted prefix plus one bonus token.",
+ c:[["Speculator.propose","spc",74,"def propose"],["RejectionSampler.__call__","rs",407,"def __call__"]]},
+
+/* ---------- update & stop ---------- */
+{id:"wait",col:11,row:2,k:"hot",t:"Wait for the batch",fn:"batch_queue.pop() → future.result()",f:"core",l:740,x:"future, scheduler_output, exec_model_fut = batch_queue.pop()",
+ n:"Only now does the CPU block, and by then it has usually scheduled the next step already.",
+ d:"step_with_batch_queue pops the oldest in-flight batch and calls future.result(), which waits on the AsyncOutput copy event and converts sampled ids to Python lists. By the time this blocks, the next step is often already queued on the GPU.",
+ c:[["batch_queue.pop()","core",740,"batch_queue.pop()"],["model_output = future.result()","core",745,"model_output = future.result()"],["AsyncOutput.get_output","asu",173,"def get_output"]],
+ p:`ModelRunnerOutput(req_ids=[chatcmpl-…], sampled_token_ids=[[578]])`},
+{id:"ufo",col:11,row:3,k:"hot",t:"Update requests",fn:"Scheduler.update_from_output → check_stop",f:"sch",l:1978,x:"def update_from_output",
+ n:"Append the token, check EOS / stop ids / max_tokens / max_model_len, cache full blocks.",
+ d:"For each request in the batch, the new token is appended and check_stop runs. A finished request frees its blocks back to the pool (they stay findable by the prefix cache until reused). AsyncScheduler also clears the placeholder and caches newly full blocks.",
+ c:[["update_from_output","sch",1978,"def update_from_output"],["_update_request_with_output","sch",2445,"def _update_request_with_output"],["check_stop","su",98,"def check_stop"],["AsyncScheduler: placeholders + cache_blocks","asch",59,"def _update_request_with_output"]],
+ p:`chatcmpl-…: +578   num_output_tokens 1 / 128   not stopped`},
+{id:"out_thread",col:11,row:4,k:"hot",t:"Output socket thread",fn:"EngineCoreOutput → output_queue → ZMQ",f:"core",l:1859,x:"def process_output_sockets",
+ n:"Batch outputs per client and push them back over ZMQ from a dedicated thread.",
+ d:"update_from_output returns one EngineCoreOutputs per API client. _process_engine_step puts them on output_queue, and the output IO thread msgpack-encodes them into reusable buffers and sends them on a PUSH socket, so serialization doesn't hold up the next step.",
+ c:[["EngineCoreOutput(…)","sch",2216,"EngineCoreOutput("],["output_queue.put_nowait(output)","core",1535,"self.output_queue.put_nowait(output)"],["process_output_sockets","core",1859,"def process_output_sockets"],["encoder.encode_into(outputs, buffer)","core",1917,"buffers = encoder.encode_into(outputs, buffer)"]],
+ p:`EngineCoreOutput(request_id="chatcmpl-…",
+  new_token_ids=[578], finish_reason=None)`},
+
+/* ---------- detokenize & stream ---------- */
+{id:"out_sock",col:12,row:2,k:"hot",t:"Output handler",fn:"process_outputs_socket → output_handler",f:"al",l:820,x:"async def output_handler",
+ n:"Back in the API process: one asyncio task receives outputs for every request.",
+ d:"process_outputs_socket decodes ZMQ frames into an asyncio queue. AsyncLLM's single output_handler task awaits get_output_async and processes outputs in chunks, yielding to the event loop between chunks so HTTP work isn't starved under load.",
+ c:[["process_outputs_socket","cc",1151,"async def process_outputs_socket"],["get_output_async","cc",1207,"async def get_output_async"],["output_handler","al",820,"async def output_handler"],["output_processor.process_outputs(…)","al",839,"processed_outputs = output_processor.process_outputs("]]},
+{id:"detok",col:12,row:3,k:"hot",t:"Detokenize",fn:"OutputProcessor.process_outputs → detokenizer.update",f:"op",l:744,x:"stop_string = req_state.detokenizer.update(",
+ n:"Incremental detokenization with the tokenizers DecodeStream, plus stop-string checks.",
+ d:"Only the new token ids are decoded, using the fast tokenizer's DecodeStream so multi-byte characters split across tokens come out correctly. Stop strings are checked against just the new text. If one matches, the request is finished here and an abort is sent to the engine core.",
+ c:[["process_outputs","op",657,"def process_outputs"],["req_state.detokenizer.update(…)","op",744,"stop_string = req_state.detokenizer.update("],["IncrementalDetokenizer.update","dt",95,"def update"],["DecodeStream","dt",181,"self.stream = tokenizers.decoders.DecodeStream("]],
+ p:`578 → " The"`},
+{id:"collector",col:12,row:4,k:"hot",t:"Deliver to the request",fn:"RequestOutputCollector.put → generate() yields",f:"op",l:770,x:"req_state.queue.put(request_output)",
+ n:"Put a RequestOutput in this request's mailbox; the waiting generate() loop wakes up and yields it.",
+ d:"make_request_output builds a RequestOutput with the delta text and token ids. put() sets an asyncio Event; generate() was awaiting q.get() and now yields the output up to the serving layer's stream generator.",
+ c:[["req_state.queue.put(request_output)","op",770,"req_state.queue.put(request_output)"],["RequestOutputCollector.put","op",68,"def put"],["out = q.get_nowait() or await q.get()","al",742,"out = q.get_nowait() or await q.get()"]],
+ p:`RequestOutput(outputs=[CompletionOutput(text=" The",
+  token_ids=[578], finish_reason=None)], finished=False)`},
+{id:"streamgen",col:12,row:5,k:"hot",t:"Chunk formatter",fn:"chat_completion_stream_generator",f:"cs",l:461,x:"async def chat_completion_stream_generator",
+ n:"First a role chunk, then one chat.completion.chunk per output with the content delta.",
+ d:"The first iteration emits a chunk with delta.role = \"assistant\". Each later RequestOutput becomes a ChatCompletionStreamResponse with the new text. If a reasoning or tool parser is configured, parse_delta splits the text into content, reasoning and tool_call deltas.",
+ c:[["chat_completion_stream_generator","cs",461,"async def chat_completion_stream_generator"],["async for res in result_generator","cs",522,"async for res in result_generator"],["delta_message = DeltaMessage(content=delta_text)","cs",676,"delta_message = DeltaMessage(content=delta_text)"]],
+ p:`{"id":"chatcmpl-…","object":"chat.completion.chunk",
+ "model":"meta-llama/Llama-3.1-8B-Instruct",
+ "choices":[{"index":0,"delta":{"content":" The"},
+   "finish_reason":null}]}`},
+{id:"sse",col:12,row:6,k:"hot",t:"SSE framing",fn:'yield f"data: {data}\\n\\n"',f:"cs",l:827,x:"yield f\"data: {data}\\n\\n\"",
+ n:'Each chunk becomes "data: {json}" plus a blank line. StreamingResponse writes it out.',
+ d:"The generator yields SSE strings; with_sse_keep_alive can interleave comment pings during long gaps; StreamingResponse writes each string to the socket as soon as it is yielded. The stream ends with data: [DONE].",
+ c:[["yield f\"data: {data}\\n\\n\"","cs",827,"yield f\"data: {data}"],["with_sse_keep_alive","sse",21,"def with_sse_keep_alive"],["yield \"data: [DONE]\\n\\n\"","cs",930,"yield \"data: [DONE]"]],
+ p:`data: {"choices":[{"delta":{"content":" The"}…}]}\\n\\n`},
+{id:"parser",col:12,row:8,k:"branch",t:"Reasoning & tool parsers",fn:"parser.parse_delta",f:"cs",l:664,x:"delta_message = parser.parse_delta(",
+ n:"--reasoning-parser / --tool-call-parser split model text into reasoning, content and tool calls.",
+ d:"Stateful per request. It sees each text delta and decides whether it belongs to a <think> section, normal content, or a tool call being streamed as JSON arguments.",
+ c:[["parser.parse_delta(…)","cs",664,"parser.parse_delta("],["Parser.parse_delta","ap",251,"def parse_delta"]]},
+{id:"stopabort",col:12,row:9,k:"branch",t:"Stop-string abort",fn:"reqs_to_abort → abort_requests_async",f:"al",l:860,x:"if processed_outputs.reqs_to_abort:",
+ n:"Stop strings are detected here, after detokenizing, so the engine core is told to stop.",
+ d:"The engine core only knows token-level stops (EOS, stop_token_ids, length). Text stop strings need the detokenizer, so when one matches the API process sends an ABORT back over ZMQ to free the request's slot and blocks.",
+ c:[["reqs_to_abort","al",860,"processed_outputs.reqs_to_abort"],["detokenizer stop check","dt",130,"stop = check_stop_strings("]]},
+
+{id:"client_sse",col:13,row:4,k:"hot",t:"Client receives stream",fn:"Content-Type: text/event-stream",f:null,
+ n:"The UI renders “The” immediately; more chunks follow, one per engine step.",
+ d:"Time to first token is the prefill step plus the hops on either side. Every following chunk costs one more engine step, and with async scheduling the CPU work for each step overlaps the GPU work of the one before.",
+ p:`data: {… "delta":{"role":"assistant","content":""} …}
+data: {… "delta":{"content":" The"} …}
+data: {… "delta":{"content":" sky"} …}
+…
+data: {… "delta":{}, "finish_reason":"stop"}
+data: [DONE]`},
+];
+
+/* hot path order: [from → to] cables are drawn between consecutive ids */
+const HOTSEQ = ["client","http_srv","routes","h_chat","render","tmpl","tok","eng_in","sparams","gen","add_req","inproc","outreg","zmq_in","in_thread","core_add","stepq","sched","waiting","pcache","alloc","sout","exec","worker","upd_state","prep","attn_meta","cg","model","layer","attn_layer","fa_write","fa_attn","mlp","logits","sampler","async_out","wait","ufo","out_thread","out_sock","detok","collector","streamgen","sse","client_sse"];
+const E = [];
+const HOTLABEL = {"zmq_in>in_thread":"ZMQ · msgpack","out_thread>out_sock":"ZMQ · msgpack","gen>add_req":"EngineClient.generate()","sout>exec":"non_block=True","async_out>wait":"Future","collector>streamgen":"async for … in generate()","tmpl>tok":"thread pool","mlp>logits":"after 32 layers"};
+for (let i=0;i<HOTSEQ.length-1;i++) E.push([HOTSEQ[i],HOTSEQ[i+1],"hot",HOTLABEL[HOTSEQ[i]+">"+HOTSEQ[i+1]]||""]);
+E.push(["ufo","sched","loop","not finished → next step"],["cg","logits","loop","FULL CUDA graph replay (decode)"]);
+E.push(
+  ["routes","r_comp","branch"],["routes","r_other","branch"],["routes","r_embd","branch"],
+  ["r_comp","sparams","branch"],["r_other","sparams","branch"],["r_embd","gen","branch"],
+  ["eng_in","mm","branch"],["mm","sparams","branch"],["gen","nfan","branch"],["nfan","add_req","branch"],
+  ["waiting","chunk","branch"],["chunk","alloc","branch"],["alloc","preempt","branch"],["preempt","sout","branch"],["sout","kvconn","branch"],["kvconn","exec","branch"],
+  ["exec","mpexec","backend"],["mpexec","worker","backend"],["upd_state","encoder","branch"],["encoder","prep","branch"],
+  ["layer","moe","branch"],["moe","logits","branch"],
+  ["attn_layer","flashinfer","backend"],["attn_layer","triton","backend"],["attn_layer","otherattn","backend"],
+  ["flashinfer","mlp","backend"],["triton","mlp","backend"],["otherattn","mlp","backend"],
+  ["logits","grammar","branch"],["grammar","sampler","branch"],["sampler","spec","branch"],["spec","async_out","branch"],
+  ["streamgen","parser","branch"],["parser","sse","branch"],["detok","stopabort","branch"],
+  ["s_cli","s_async","startup"],["s_async","s_load","startup"],["s_load","s_kv","startup"],["s_kv","s_loop","startup"],["s_loop","stepq","startup"],["s_cli","http_srv","startup"]
+);
+
+/* trace steps: id or [id, narration override] */
+const TRACE = HOTSEQ.map(id=>id);
+TRACE.splice(TRACE.length,0,
+  ["ufo","Iteration 2+. The token went out, the request isn't finished, so it stays in the running list. The purple cable is the generation loop: every following token comes from another engine step."],
+  ["sched","Step 2 was actually scheduled before step 1's token reached the CPU. Async scheduling: as soon as step 1 was queued on the GPU, the busy loop came back here. The request had one output placeholder, so it got 1 decode token whose id the CPU didn't know yet. Other requests' prefills can share this step."],
+  ["alloc","Decode needs room for one more token: position 41 still fits in block #5014 (10/16 used), so no new block is allocated."],
+  ["prep","combine_sampled_and_draft_tokens copies the token sampled in step 1 (\" The\", 578) straight from GPU memory into input_ids. The CPU never needed it."],
+  ["cg","A batch with only decode tokens matches a captured shape, so the runner replays a FULL CUDA graph. All 32 layers run as one replay and no model Python code runs at all. Attention now reads 42 cached positions."],
+  ["logits","Same as before: one logits row for this request (plus one per other running request)."],
+  ["sampler","Sample the next token: \" sky\". This repeats every step until a stop condition."],
+  ["wait","Batch N+1 is already on the GPU while the CPU waits for batch N's ids. The batch queue holds two in-flight steps."],
+  ["ufo","Eventually the model emits <|eot_id|> (128009, the EOS id). check_stop matches it, marks the request FINISHED_STOPPED and frees its blocks. They stay in the prefix cache until something else needs them."],
+  ["detok","Final output: the EOS token isn't decoded into text, finish_reason is \"stop\", and the request state is removed from the OutputProcessor."],
+  ["streamgen","The last chunk carries finish_reason: \"stop\". With stream_options.include_usage a usage chunk follows (prompt_tokens 41, completion_tokens N)."],
+  ["sse","Then data: [DONE], and StreamingResponse closes the stream."],
+  ["client_sse","Done. A follow-up turn repeats this conversation as its prompt, so its leading full blocks hit the prefix cache and only the new tokens need computing."]
+);
+
+/* ---------------- layout ---------------- */
+const W=244, COLW=300, X0=40, PORTY=28;
+const rowY = r => r===0 ? 86 : 230 + (r-2)*114;
+const byId = {};
+N.forEach(n=>{ n.x = X0 + n.col*COLW; n.y = rowY(n.row); byId[n.id]=n; n.ins=[]; n.outs=[]; });
+const edges = E.map(([a,b,k,label])=>{ const e={a,b,k,label:label||"",key:a+">"+b, ox:0,oy:0,vx:0,vy:0,tx:0,ty:0}; byId[a].outs.push(e); byId[b].ins.push(e); return e; });
+const edgeByKey = Object.fromEntries(edges.map(e=>[e.key,e]));
+const laneOf = n => LANES[n.col];
+const hotIndex = Object.fromEntries(HOTSEQ.map((id,i)=>[id,i+1]));
+
+/* ---------------- DOM refs ---------------- */
+const $ = s => document.querySelector(s);
+const canvas=$("#canvas"), world=$("#world"), wires=$("#wires"), wiresG=$("#wiresG"), glows=$("#glows"), labelsG=$("#labels"), hitsG=$("#hits"), packet=$("#packet"), insp=$("#insp"), tip=$("#tip");
+const SVGNS="http://www.w3.org/2000/svg";
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const srcURL = (f,l) => DIRS[f] ? `${REPO}/tree/${SHA}/${DIRS[f]}` : GH + F[f] + (l?`#L${l}`:"");
+const shortPath = p => p.replace(/^vllm\//,"").replace(/^entrypoints\/openai\/chat_completion\//,"openai/chat/").replace(/^model_executor\//,"").replace(/^entrypoints\//,"");
+const srcLabel = (f,l) => DIRS[f] ? shortPath(DIRS[f])+"/" : shortPath(F[f]) + (l?`:${l}`:"");
+const lcVar = n => `var(${laneOf(n).c})`;
+
+/* lanes headers + startup band */
+LANES.forEach((L,i)=>{
+  const h=document.createElement("div"); h.className="lane-h";
+  h.style.left=(X0+i*COLW)+"px"; h.style.top="22px"; h.style.color=`var(${L.c})`;
+  h.innerHTML=`<span>${esc(L.name)}</span><small>${esc(L.sub)}</small>`; world.appendChild(h);
+});
+{ const b=document.createElement("div"); b.className="band"; b.style.left=(X0+COLW-14)+"px"; b.style.top=(rowY(0)-16)+"px"; b.style.width=(COLW*5-28)+"px"; b.style.height="124px"; b.innerHTML="<span>Startup · runs once</span>"; world.appendChild(b); }
+
+/* nodes */
+const KTAG={hot:"hot path",branch:"alternate",backend:"backend",startup:"startup"};
+N.forEach(n=>{
+  const el=document.createElement("div");
+  el.className=`node k-${n.k}`; el.dataset.id=n.id; el.tabIndex=0; el.setAttribute("role","button");
+  el.setAttribute("aria-label", `${n.t}: ${n.fn}`);
+  el.style.setProperty("--lc", lcVar(n));
+  const step = hotIndex[n.id] ? `<span class="step">${hotIndex[n.id]}</span>` : `<span class="tag">${KTAG[n.k]}</span>`;
+  el.innerHTML = `<span class="port in"></span><span class="port out"></span>
+    <div class="hd">${step}<span class="tt">${esc(n.t)}</span></div>
+    <div class="bd"><div class="fn">${esc(n.fn)}</div><div class="loc">${n.f?esc(srcLabel(n.f,n.l)):"external"}</div></div>`;
+  el.style.left=n.x+"px"; el.style.top=n.y+"px";
+  world.appendChild(el); n.el=el;
+});
+N.forEach(n=>{ n.h = n.el.offsetHeight || 66; });
+{ const bottom = Math.max(...N.map(n=>n.y+n.h)) + 40;
+  BOUNDS.forEach(B=>{ const d=document.createElement("div"); d.className="pbound";
+    d.style.left=(X0+(B.after+1)*COLW-(COLW-W)/2)+"px"; d.style.top="56px"; d.style.height=(bottom-56)+"px";
+    d.innerHTML=`<span style="top:${rowY(2)-56+8}px">${esc(B.label)}</span>`; world.insertBefore(d, world.firstChild); }); }
+
+/* wires */
+edges.forEach(e=>{
+  const p=document.createElementNS(SVGNS,"path"); p.setAttribute("class",`wire k-${e.k}${e.k==="hot"?" flow":""}`); wiresG.appendChild(p); e.el=p;
+  if(e.k==="hot"){ const g=document.createElementNS(SVGNS,"path"); g.setAttribute("class","glow"); glows.appendChild(g); e.glow=g; }
+  const h=document.createElementNS(SVGNS,"path"); h.setAttribute("class","hit"); hitsG.appendChild(h); e.hit=h; h.__e=e;
+  if(e.label){ const t=document.createElementNS(SVGNS,"text"); t.setAttribute("class",`wlabel k-${e.k}`); t.setAttribute("text-anchor","middle"); t.textContent=e.label; labelsG.appendChild(t); e.lab=t; }
+});
+
+function geom(e){
+  const A=byId[e.a], B=byId[e.b];
+  const sx=A.x+W, sy=A.y+PORTY, tx=B.x, ty=B.y+PORTY;
+  let c1x,c1y,c2x,c2y;
+  if (tx > sx + 30) { const dx=Math.max(55,(tx-sx)*0.45); c1x=sx+dx;c1y=sy;c2x=tx-dx;c2y=ty; }
+  else if (A.col===B.col) { c1x=sx+85;c1y=sy;c2x=tx-85;c2y=ty; }
+  else { const d=Math.hypot(sx-tx,sy-ty); const drop=170+d*0.22; c1x=sx+260;c1y=Math.max(sy,ty)+drop;c2x=tx-260;c2y=Math.max(sy,ty)+drop; }
+  c1x+=e.ox;c1y+=e.oy;c2x+=e.ox;c2y+=e.oy;
+  return {sx,sy,c1x,c1y,c2x,c2y,tx,ty};
+}
+function drawEdge(e){
+  const g=geom(e), d=`M${g.sx},${g.sy} C${g.c1x},${g.c1y} ${g.c2x},${g.c2y} ${g.tx},${g.ty}`;
+  e.el.setAttribute("d",d); e.hit.setAttribute("d",d); if(e.glow) e.glow.setAttribute("d",d);
+  if(e.lab){ const t=.5,m=1-t; const x=m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx, y=m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty; e.lab.setAttribute("x",x); e.lab.setAttribute("y",y-6); }
+  e.mid = bez(g,.5);
+}
+const bez=(g,t)=>{const m=1-t;return{x:m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx,y:m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty}};
+edges.forEach(drawEdge);
+
+/* ---------------- spring physics on hovered cables ---------------- */
+let springing=false;
+function kick(){ if(!springing){ springing=true; requestAnimationFrame(stepSprings); } }
+function stepSprings(){
+  let active=false;
+  for(const e of edges){
+    const fx=(e.tx-e.ox)*0.14, fy=(e.ty-e.oy)*0.14;
+    e.vx=(e.vx+fx)*0.74; e.vy=(e.vy+fy)*0.74; e.ox+=e.vx; e.oy+=e.vy;
+    if(Math.abs(e.vx)+Math.abs(e.vy)+Math.abs(e.tx-e.ox)+Math.abs(e.ty-e.oy)>0.05){ active=true; drawEdge(e); }
+    else if(e.ox!==e.tx||e.oy!==e.ty){ e.ox=e.tx;e.oy=e.ty;e.vx=e.vy=0;drawEdge(e); }
+  }
+  if(active) requestAnimationFrame(stepSprings); else springing=false;
+}
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------------- camera ---------------- */
+const cam={x:0,y:0,k:1};
+function applyCam(){
+  world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
+  const gs=22*cam.k; canvas.style.backgroundSize=`${gs}px ${gs}px`; canvas.style.backgroundPosition=`${cam.x}px ${cam.y}px`;
+  $("#pct").textContent=Math.round(cam.k*100)+"%";
+  labelsG.style.display = cam.k<0.45 ? "none":"";
+  drawMini();
+}
+const clampK=k=>Math.min(2.2,Math.max(0.18,k));
+function zoomAt(px,py,k){ k=clampK(k); const wx=(px-cam.x)/cam.k, wy=(py-cam.y)/cam.k; cam.k=k; cam.x=px-wx*k; cam.y=py-wy*k; applyCam(); }
+let flyRaf=0;
+function flyTo(tx,ty,tk,ms=520){
+  cancelAnimationFrame(flyRaf);
+  if(reduced){ Object.assign(cam,{x:tx,y:ty,k:tk}); applyCam(); return; }
+  const s={...cam}, t0=performance.now();
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+    cam.x=s.x+(tx-s.x)*q; cam.y=s.y+(ty-s.y)*q; cam.k=s.k+(tk-s.k)*q; applyCam(); if(p<1) flyRaf=requestAnimationFrame(f); };
+  flyRaf=requestAnimationFrame(f);
+}
+function viewRect(){ const r=canvas.getBoundingClientRect(); return {w:r.width,h:r.height,l:r.left,t:r.top}; }
+function fitBox(x0,y0,x1,y1,pad=60,maxK=1.1){
+  const v=viewRect(); const bw=x1-x0, bh=y1-y0;
+  const k=clampK(Math.min((v.w-pad*2)/bw,(v.h-pad*2-70)/bh,maxK));
+  flyTo((v.w-bw*k)/2-x0*k, (v.h-70-bh*k)/2-y0*k+10, k);
+}
+function visibleNodes(){ return N.filter(n=>!n.el.hidden); }
+function fitNodes(list,maxK){ if(!list.length) return; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; list.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);}); fitBox(x0,y0-40,x1,y1,50,maxK); }
+function centerOn(n,k){ const v=viewRect(); k=k??Math.max(cam.k,0.85); flyTo(v.w/2-(n.x+W/2)*k, v.h/2-(n.y+n.h/2)*k-30, k); }
+
+/* ---------------- interaction: pan / zoom / drag ---------------- */
+let drag=null; const pointers=new Map(); let pinch=null;
+canvas.addEventListener("pointerdown",ev=>{
+  if(ev.target.closest(".transport,.legend,.mini")) return;
+  pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pointers.size===2){ const [a,b]=[...pointers.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),k:cam.k}; drag=null; return; }
+  const nodeEl=ev.target.closest(".node");
+  if(nodeEl){ const n=byId[nodeEl.dataset.id]; drag={type:"node",n,sx:ev.clientX,sy:ev.clientY,nx:n.x,ny:n.y,moved:false}; }
+  else drag={type:"pan",sx:ev.clientX,sy:ev.clientY,cx:cam.x,cy:cam.y,moved:false,edge:ev.target.__e||null};
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener("pointermove",ev=>{
+  if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pinch && pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); const v=viewRect(); zoomAt((a.x+b.x)/2-v.l,(a.y+b.y)/2-v.t,pinch.k*d/pinch.d); return; }
+  if(!drag) return;
+  const dx=ev.clientX-drag.sx, dy=ev.clientY-drag.sy;
+  if(!drag.moved && Math.hypot(dx,dy)>4){ drag.moved=true; if(drag.type==="pan") canvas.classList.add("panning"); else { drag.n.el.classList.add("dragging"); hideTip(); } }
+  if(!drag.moved) return;
+  if(drag.type==="pan"){ cam.x=drag.cx+dx; cam.y=drag.cy+dy; applyCam(); }
+  else { const n=drag.n; n.x=drag.nx+dx/cam.k; n.y=drag.ny+dy/cam.k; n.el.style.left=n.x+"px"; n.el.style.top=n.y+"px"; [...n.ins,...n.outs].forEach(drawEdge); drawMini(); }
+});
+function endPtr(ev){
+  pointers.delete(ev.pointerId); if(pointers.size<2) pinch=null;
+  if(!drag) return;
+  if(!drag.moved && drag.type==="node") select(drag.n.id,false);
+  else if(!drag.moved && drag.type==="pan" && ev.type==="pointerup") { if(drag.edge) select(drag.edge.b,true); else if(sel) select(null); }
+  if(drag.type==="node") drag.n.el.classList.remove("dragging");
+  canvas.classList.remove("panning"); drag=null;
+}
+canvas.addEventListener("pointerup",endPtr); canvas.addEventListener("pointercancel",endPtr);
+canvas.addEventListener("wheel",ev=>{
+  ev.preventDefault(); const v=viewRect();
+  const wheelLike = ev.deltaMode!==0 || (ev.deltaX===0 && Math.abs(ev.deltaY)>=50);
+  if((ev.ctrlKey||ev.metaKey||wheelLike) && !ev.shiftKey){
+    zoomAt(ev.clientX-v.l, ev.clientY-v.t, cam.k*Math.exp(-ev.deltaY*(ev.ctrlKey?0.012:0.0018)));
+  } else { cam.x-=ev.deltaX; cam.y-=ev.deltaY; applyCam(); }
+},{passive:false});
+$("#btnIn").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k*1.2)};
+$("#btnOut").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k/1.2)};
+$("#btnFit").onclick=()=>fitNodes(visibleNodes(),1);
+$("#btnHot").onclick=()=>fitNodes(N.filter(n=>n.k==="hot"),1);
+
+/* ---------------- hover highlighting + tooltip ---------------- */
+let hoverNode=null;
+function setLit(nodes,edgesLit){
+  N.forEach(n=>n.el.classList.toggle("lit",nodes.has(n.id)));
+  edges.forEach(e=>{ const on=edgesLit.has(e); e.el.classList.toggle("lit",on); e.lab&&e.lab.classList.toggle("lit",on); });
+  const any=nodes.size>0;
+  canvas.classList.toggle("dim-nodes",any); wires.classList.toggle("dim-wires",any);
+}
+function clearLit(){ N.forEach(n=>n.el.classList.remove("lit")); edges.forEach(e=>{e.el.classList.remove("lit");e.lab&&e.lab.classList.remove("lit")}); canvas.classList.remove("dim-nodes"); wires.classList.remove("dim-wires"); }
+function litNode(n){ const ns=new Set([n.id]), es=new Set(); [...n.ins,...n.outs].forEach(e=>{ if(byId[e.a].el.hidden||byId[e.b].el.hidden) return; es.add(e); ns.add(e.a); ns.add(e.b); }); setLit(ns,es); }
+function showTip(html,x,y){ tip.innerHTML=html; tip.hidden=false; const r=tip.getBoundingClientRect(); let L=x+16,T=y+16; if(L+r.width>innerWidth-8) L=x-r.width-12; if(T+r.height>innerHeight-8) T=y-r.height-12; tip.style.left=L+"px"; tip.style.top=T+"px"; }
+function hideTip(){ tip.hidden=true; }
+world.addEventListener("pointerover",ev=>{
+  const el=ev.target.closest(".node"); if(!el||drag?.moved) return;
+  const n=byId[el.dataset.id]; hoverNode=n; litNode(n);
+  // nudge connected cables outward a touch
+  [...n.ins,...n.outs].forEach(e=>{ e.ty = e.b===n.id ? -6 : 6; }); if(!reduced) kick();
+});
+world.addEventListener("pointermove",ev=>{ const el=ev.target.closest(".node"); if(el && !drag?.moved && ev.pointerType==="mouse"){ const n=byId[el.dataset.id]; showTip(`<b>${esc(n.t)}</b>${esc(n.n)}<br><code>${n.f?esc(srcLabel(n.f,n.l)):""}</code>`,ev.clientX,ev.clientY); } });
+world.addEventListener("pointerout",ev=>{
+  const el=ev.target.closest(".node"); if(!el) return; if(ev.relatedTarget && el.contains(ev.relatedTarget)) return;
+  const n=byId[el.dataset.id]; [...n.ins,...n.outs].forEach(e=>{e.tx=0;e.ty=0;}); kick();
+  hoverNode=null; hideTip(); restoreLit();
+});
+hitsG.addEventListener("pointerover",ev=>{ const e=ev.target.__e; if(!e) return; setLit(new Set([e.a,e.b]),new Set([e])); });
+hitsG.addEventListener("pointermove",ev=>{
+  const e=ev.target.__e; if(!e||drag) return; const v=viewRect();
+  const wx=(ev.clientX-v.l-cam.x)/cam.k, wy=(ev.clientY-v.t-cam.y)/cam.k;
+  const dx=wx-e.mid.x, dy=wy-e.mid.y, L=Math.hypot(dx,dy)||1, m=Math.min(46,L*0.5);
+  e.tx=dx/L*m; e.ty=dy/L*m; if(!reduced) kick();
+  const A=byId[e.a],B=byId[e.b];
+  if(ev.pointerType==="mouse") showTip(`<b>${esc(A.t)} → ${esc(B.t)}</b>${e.label?esc(e.label)+"<br>":""}<code>${esc({hot:"hot path",loop:"per-token loop",branch:"alternate route",backend:"backend alternative",startup:"startup"}[e.k])}</code>`,ev.clientX,ev.clientY);
+});
+hitsG.addEventListener("pointerout",ev=>{ const e=ev.target.__e; if(!e) return; e.tx=0;e.ty=0;kick(); hideTip(); restoreLit(); });
+function restoreLit(){ if(sel) litNode(byId[sel]); else clearLit(); }
+
+/* ---------------- filters + search ---------------- */
+const KINDS=[{k:"hot",label:"Hot path",col:"var(--hot)"},{k:"branch",label:"Alternates",col:"#8a95a5"},{k:"backend",label:"Other backends",col:"var(--c-model)"},{k:"startup",label:"Startup",col:"var(--startup)"}];
+const shown=new Set(KINDS.map(x=>x.k));
+const chips=$("#chips");
+KINDS.forEach(K=>{
+  const b=document.createElement("button"); b.className="chip"; b.setAttribute("aria-pressed","true");
+  b.innerHTML=`<i style="background:${K.col}"></i>${K.label}<span class="n">${N.filter(n=>n.k===K.k).length}</span>`;
+  b.onclick=()=>{ shown.has(K.k)?shown.delete(K.k):shown.add(K.k); b.setAttribute("aria-pressed",shown.has(K.k)); applyFilters(); };
+  chips.appendChild(b);
+});
+function applyFilters(){
+  N.forEach(n=>n.el.hidden=!shown.has(n.k));
+  edges.forEach(e=>{ const h=byId[e.a].el.hidden||byId[e.b].el.hidden; e.el.style.display=e.hit.style.display=h?"none":""; if(e.glow) e.glow.style.display=h?"none":""; if(e.lab) e.lab.style.display=h?"none":""; });
+  document.querySelectorAll(".band").forEach(b=>b.hidden=!shown.has("startup"));
+  drawMini();
+}
+const q=$("#q"), qcount=$("#qcount");
+let hits=[];
+q.addEventListener("input",()=>{
+  const s=q.value.trim().toLowerCase();
+  N.forEach(n=>n.el.classList.remove("hit"));
+  if(!s){ canvas.classList.remove("searching"); qcount.textContent=""; hits=[]; return; }
+  hits=N.filter(n=>[n.t,n.fn,n.n,n.d,n.f?F[n.f]||"":"",...(n.c||[]).map(c=>c[0])].join(" ").toLowerCase().includes(s));
+  hits.forEach(n=>n.el.classList.add("hit")); canvas.classList.add("searching");
+  qcount.textContent=hits.length?`${hits.length}`:"none";
+});
+let hitCursor=0;
+q.addEventListener("keydown",ev=>{
+  if(ev.key==="Enter"&&hits.length){ const n=hits[hitCursor++%hits.length]; if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); } select(n.id,true); }
+  if(ev.key==="Escape"){ q.value=""; q.dispatchEvent(new Event("input")); q.blur(); }
+});
+function syncChips(){ [...chips.children].forEach((b,i)=>b.setAttribute("aria-pressed",shown.has(KINDS[i].k))); }
+
+/* ---------------- inspector ---------------- */
+let sel=null;
+function select(id,fly){
+  if(sel) byId[sel].el.classList.remove("sel");
+  sel=id;
+  if(!id){ clearLit(); renderEmpty(); return; }
+  const n=byId[id]; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n);
+  if(fly) centerOn(n);
+  insp.classList.remove("closed");
+}
+function jumpBtn(id,via){
+  const n=byId[id]; const hot=n.k==="hot";
+  return `<button class="jump${hot?" hot":""}" data-jump="${id}" style="--lc:${lcVar(n)}"><i></i>${esc(n.t)}${via?` <em>${esc(via)}</em>`:""}</button>`;
+}
+function renderInspector(n, narration){
+  const L=laneOf(n);
+  const hi=hotIndex[n.id];
+  const prev=hi>1?HOTSEQ[hi-2]:null, next=hi&&hi<HOTSEQ.length?HOTSEQ[hi]:null;
+  const ins=n.ins.map(e=>jumpBtn(e.a, e.k==="loop"?"loop":e.k!=="hot"?KTAG[byId[e.a].k]:"")).join("");
+  const outs=n.outs.map(e=>jumpBtn(e.b, e.k==="loop"?"loop":e.k!=="hot"?KTAG[byId[e.b].k]:"")).join("");
+  insp.style.setProperty("--lc",lcVar(n));
+  insp.innerHTML=`
+    <button class="ibtn closeinsp" data-close aria-label="Close inspector">✕</button>
+    ${narration?`<div class="narr"><span class="k">${esc(narration.k)}</span><p>${esc(narration.text)}</p></div>`:""}
+    <div>
+      <div class="eyebrow"><i></i>${esc(L.name)} · ${hi?`hot path step ${hi} of ${HOTSEQ.length}`:esc(KTAG[n.k])}</div>
+      <h2 style="margin-top:6px">${esc(n.t)}</h2>
+      <div class="fnline">${esc(n.fn)}</div>
+      ${n.f?`<a class="src" href="${srcURL(n.f,n.l)}" target="_blank" rel="noopener">${esc(srcLabel(n.f,n.l))} ↗</a>`:""}
+    </div>
+    <p>${esc(n.d)}</p>
+    ${n.p?`<div class="sec"><h3>On this request</h3><pre class="payload">${n.p}</pre></div>`:""}
+    ${n.c&&n.c.length?`<div class="sec"><h3>Key calls</h3><ul class="calls">${n.c.map(([lab,f,l])=>`<li><span>${esc(lab)}</span><a href="${srcURL(f,l)}" target="_blank" rel="noopener">${esc((F[f]||"").split("/").pop())}:${l}</a></li>`).join("")}</ul></div>`:""}
+    ${ins?`<div class="sec"><h3>Comes from</h3><div class="jumps">${ins}</div></div>`:""}
+    ${outs?`<div class="sec"><h3>Goes to</h3><div class="jumps">${outs}</div></div>`:""}
+    ${hi?`<div class="navrow"><button class="ibtn" data-jump="${prev||""}" ${prev?"":"disabled"}>◀ ${prev?esc(byId[prev].t):"start"}</button><button class="ibtn" data-jump="${next||""}" ${next?"":"disabled"}>${next?esc(byId[next].t):"end"} ▶</button></div>`:""}
+  `;
+}
+function renderEmpty(){
+  insp.style.removeProperty("--lc");
+  insp.innerHTML=`<div class="empty">
+    <div class="eyebrow">vllm serve · ${N.length} nodes · ${edges.length} connections</div>
+    <h2>Follow one chat request through vLLM</h2>
+    <p>The amber cables are the path a streaming <code style="font-family:var(--mono);font-size:12px">/v1/chat/completions</code> request takes on one NVIDIA GPU. It starts in the API process (HTTP, chat template, tokenizer), crosses ZMQ into the engine core process (scheduler, paged KV cache, GPU forward pass, sampling), then crosses back to be detokenized and streamed as server-sent events. The purple cables are the per-token loop, and the dashed lines are the two process boundaries.</p>
+    <ol>
+      <li>Press <b>▶ Trace</b> below, or step with <span class="kbd">←</span> <span class="kbd">→</span>. Set the pace with <b>Speed</b>, or press <span class="kbd">[</span> <span class="kbd">]</span>. The thin bar under the step name fills until the next step.</li>
+      <li>Click any node for what it does, sample data at that point, and links to the exact source lines.</li>
+      <li>Hover cables and nodes to see connections. Drag nodes to untangle, drag the background to pan, scroll or pinch to zoom.</li>
+    </ol>
+    <div class="sec"><h3>Start here</h3><div class="jumps">${["client","stepq","sched","prep","sampler","detok"].map(id=>jumpBtn(id)).join("")}</div></div>
+    <p style="font-size:12px;color:var(--fg-3)">Source lines are pinned to commit 1388100 (Oct 4 2026). Assumed setup: <code style="font-family:var(--mono)">vllm serve meta-llama/Llama-3.1-8B-Instruct</code> on one H100 with defaults, which means Model Runner V2, async scheduling, FlashAttention, FULL_AND_PIECEWISE CUDA graphs, prefix caching and chunked prefill. Token ids, probabilities and block numbers in the samples are illustrative.</p>
+  </div>`;
+}
+insp.addEventListener("click",ev=>{
+  const j=ev.target.closest("[data-jump]"); if(j&&j.dataset.jump){ const n=byId[j.dataset.jump]; if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); } select(j.dataset.jump,true); return; }
+  if(ev.target.closest("[data-close]")){ insp.classList.add("closed"); }
+});
+
+/* ---------------- trace ---------------- */
+let ti=-1, playing=false, playTimer=0;
+/* playback speed: 1× is the original pace (2.3 s per step). Slower speeds also slow the packet and camera. */
+const SPEEDS=[0.25,0.5,0.75,1,1.5,2];
+const BASE_DWELL=2300;
+let speed=0.5;
+try{ const s=parseFloat(localStorage.getItem("vllm-tracer-speed")); if(SPEEDS.includes(s)) speed=s; }catch(e){}
+const tSpeed=document.getElementById("tSpeed"), tDwell=document.getElementById("tDwell");
+SPEEDS.forEach(s=>{ const o=document.createElement("option"); o.value=s; o.textContent=`${s}× · ${(BASE_DWELL/s/1000).toFixed(1)}s`; tSpeed.appendChild(o); });
+tSpeed.value=String(speed);
+const dwellMs=()=>BASE_DWELL/speed;
+function setSpeed(s){
+  speed=s; tSpeed.value=String(s);
+  try{ localStorage.setItem("vllm-tracer-speed",String(s)); }catch(e){}
+  if(playing){ clearTimeout(playTimer); scheduleNext(); }
+}
+tSpeed.addEventListener("change",()=>{ setSpeed(parseFloat(tSpeed.value)); tSpeed.blur(); });
+function startDwell(ms){
+  tDwell.style.transition="none"; tDwell.style.width="0"; void tDwell.offsetWidth;
+  if(ms){ tDwell.style.transition=`width ${ms}ms linear`; tDwell.style.width="100%"; }
+}
+function scheduleNext(){ const ms=dwellMs(); startDwell(ms); playTimer=setTimeout(tick, ms); }
+const tProg=$("#tProg"), tStep=$("#tStep"), tName=$("#tName"), tPlay=$("#tPlay");
+function stepInfo(i){ const s=TRACE[i]; return Array.isArray(s)?{id:s[0],say:s[1]}:{id:s,say:null}; }
+function clearTrace(){ N.forEach(n=>n.el.classList.remove("cur","visited")); edges.forEach(e=>e.el.classList.remove("trav")); packet.setAttribute("cx",-100); packet.setAttribute("cy",-100); }
+function gotoStep(i){
+  i=Math.max(0,Math.min(TRACE.length-1,i)); const prevI=ti; ti=i;
+  clearTrace();
+  ["hot"].forEach(k=>{ if(!shown.has(k)){ shown.add(k); syncChips(); applyFilters(); } });
+  for(let j=0;j<=i;j++){ const {id}=stepInfo(j); byId[id].el.classList.add("visited"); if(j>0){ const e=edgeByKey[stepInfo(j-1).id+">"+id]; if(e) e.el.classList.add("trav"); } }
+  const {id,say}=stepInfo(i), n=byId[id]; n.el.classList.add("cur");
+  if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); }
+  const loopPhase = i>=HOTSEQ.length;
+  tStep.textContent = loopPhase ? `STEP ${i+1}/${TRACE.length} · GENERATION LOOP` : `STEP ${i+1}/${TRACE.length} · FIRST TOKEN`;
+  tName.textContent = n.t+" — "+n.fn;
+  tProg.style.width=((i+1)/TRACE.length*100)+"%";
+  if(sel) byId[sel].el.classList.remove("sel"); sel=id; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n, {k: loopPhase?`TRACE · LOOP STEP ${i+1}`:`TRACE · STEP ${i+1}`, text: say || n.n});
+  insp.classList.remove("closed");
+  if($("#tFollow").checked){ const v=viewRect(), k=Math.max(cam.k,0.8); flyTo(v.w/2-(n.x+W/2)*k, v.h/2-(n.y+n.h/2)*k-30, k, Math.min(1400, 520/Math.min(1,speed))); }
+  // packet along the edge we just traversed
+  if(prevI>=0 && Math.abs(i-prevI)===1){
+    const a=stepInfo(Math.min(i,prevI)).id, b=stepInfo(Math.max(i,prevI)).id, e=edgeByKey[a+">"+b];
+    if(e && !reduced) animatePacket(e, i<prevI);
+  }
+}
+let pktRaf=0;
+function animatePacket(e,rev){
+  cancelAnimationFrame(pktRaf); const L=e.el.getTotalLength(), t0=performance.now(), ms=Math.min(900,280+L*0.35)/Math.min(1,speed);
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=rev?1-p:p, pt=e.el.getPointAtLength(L*q); packet.setAttribute("cx",pt.x); packet.setAttribute("cy",pt.y); if(p<1) pktRaf=requestAnimationFrame(f); else { packet.setAttribute("cx",-100); packet.setAttribute("cy",-100);} };
+  pktRaf=requestAnimationFrame(f);
+}
+function setPlaying(p){ playing=p; tPlay.textContent=p?"❚❚ Pause":(ti>=0?"▶ Play":"▶ Trace"); clearTimeout(playTimer); if(p) scheduleNext(); else startDwell(0); }
+function tick(){ if(!playing) return; if(ti>=TRACE.length-1){ setPlaying(false); return; } gotoStep(ti+1); if(ti>=TRACE.length-1){ setPlaying(false); return; } scheduleNext(); }
+tPlay.onclick=()=>{ if(playing){ setPlaying(false); return; } gotoStep(ti<0||ti>=TRACE.length-1 ? 0 : ti+1); setPlaying(true); };
+$("#tNext").onclick=()=>{ setPlaying(false); gotoStep(ti+1); };
+$("#tPrev").onclick=()=>{ setPlaying(false); gotoStep(ti<0?0:ti-1); };
+$("#tFirst").onclick=()=>{ setPlaying(false); gotoStep(0); };
+document.addEventListener("keydown",ev=>{
+  if(ev.target.matches("input,textarea")) { return; }
+  if(ev.key==="ArrowRight"){ ev.preventDefault(); setPlaying(false); gotoStep(ti+1); }
+  else if(ev.key==="ArrowLeft"){ ev.preventDefault(); setPlaying(false); gotoStep(ti<0?0:ti-1); }
+  else if(ev.key===" " && !ev.target.closest("button")){ ev.preventDefault(); tPlay.click(); }
+  else if(ev.key==="["||ev.key==="]"){ const i=SPEEDS.indexOf(speed)+(ev.key==="]"?1:-1); if(i>=0&&i<SPEEDS.length) setSpeed(SPEEDS[i]); }
+  else if(ev.key==="f"||ev.key==="F"){ fitNodes(visibleNodes(),1); }
+  else if(ev.key==="/"){ ev.preventDefault(); q.focus(); }
+  else if(ev.key==="Escape"){ setPlaying(false); select(null); clearTrace(); ti=-1; tStep.textContent="TRACE A REQUEST"; tName.textContent="Press ▶ to follow one chat request end to end"; tProg.style.width="0"; tPlay.textContent="▶ Trace"; }
+  else if(ev.key==="Enter" && ev.target.classList.contains("node")){ select(ev.target.dataset.id,true); }
+});
+
+/* ---------------- minimap ---------------- */
+const mini=$("#mini"); let mb=null; const laneColor={}; LANES.forEach(L=>laneColor[L.c]=getComputedStyle(document.documentElement).getPropertyValue(L.c).trim());
+function drawMini(){
+  if(!mini.getBoundingClientRect().width) return;
+  const vis=visibleNodes(); if(!vis.length){ mini.innerHTML=""; return; }
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; N.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);});
+  const pad=8, s=Math.min((190-pad*2)/(x1-x0),(104-pad*2)/(y1-y0)); mb={x0,y0,s,pad};
+  const v=viewRect();
+  const vx=(-cam.x/cam.k-x0)*s+pad, vy=(-cam.y/cam.k-y0)*s+pad, vw=v.w/cam.k*s, vh=v.h/cam.k*s;
+  mini.innerHTML = vis.map(n=>`<rect x="${(n.x-x0)*s+pad}" y="${(n.y-y0)*s+pad}" width="${W*s}" height="${Math.max(2,n.h*s)}" rx="1" fill="${n.k==="hot"?"#ffb547":laneColor[laneOf(n).c]}" opacity="${n.k==="hot"?.85:.45}"/>`).join("")
+    + `<rect class="v" x="${vx}" y="${vy}" width="${vw}" height="${vh}" rx="2"/>`;
+}
+mini.addEventListener("pointerdown",ev=>{
+  ev.stopPropagation(); if(!mb) return; const r=mini.getBoundingClientRect(), v=viewRect();
+  const wx=(ev.clientX-r.left-mb.pad)/mb.s+mb.x0, wy=(ev.clientY-r.top-mb.pad)/mb.s+mb.y0;
+  flyTo(v.w/2-wx*cam.k, v.h/2-wy*cam.k, cam.k, 300);
+});
+
+/* ---------------- boot ---------------- */
+function sizeWires(){ let x1=0,y1=0; N.forEach(n=>{x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h)}); wires.setAttribute("width",x1+400); wires.setAttribute("height",y1+800); }
+sizeWires(); renderEmpty();
+requestAnimationFrame(()=>{ fitNodes(N.filter(n=>n.col<=4 && n.row<=6),0.95); });
+addEventListener("resize",()=>drawMini());
+if(innerWidth<=860) insp.classList.add("closed");
+</script>
+</body>
+</html>

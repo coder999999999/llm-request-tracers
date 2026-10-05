@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Follow one streaming chat request through llama-server, step by step, with links to the exact source lines.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>llama.cpp Request Tracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-bleed node canvas, top command bar, right inspector, bottom trace transport. Dark-only by request. */
+:root{
+  color-scheme: dark;
+  --bg:#0a0d11; --bg-2:#0f1318; --panel:#12161c; --panel-2:#171c23; --line:#232a33; --line-2:#2e3742;
+  --fg:#d8dee7; --fg-2:#9aa5b4; --fg-3:#647083;
+  --hot:#ffb547; --hot-dim:rgba(255,181,71,.16); --loop:#b993ff; --startup:#5fb3a9; --branch:#4a5463;
+  --c-client:#8b96a8; --c-http:#4cb6ac; --c-parse:#64a0f2; --c-queue:#9286ee; --c-sched:#cf86da;
+  --c-llama:#f08a5d; --c-graph:#9cc65b; --c-ggml:#58c6df; --c-samp:#f17a96; --c-resp:#59cc9c;
+  --sans:"IBM Plex Sans Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);overflow:hidden;margin:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+a{color:var(--c-parse)}
+
+.app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr;grid-template-columns:1fr 340px}
+.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:9px 16px;padding-top:calc(9px + env(safe-area-inset-top,0px));background:var(--bg-2);border-bottom:1px solid var(--line);z-index:5}
+.brand{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.brand b{font-weight:700;font-size:15px;letter-spacing:.01em}
+.brand span{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
+.brand a{color:var(--fg-3);text-decoration:none;border-bottom:1px dotted var(--line-2)}
+.search{position:relative;flex:0 1 260px;min-width:160px}
+.search input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 52px 6px 28px;color:var(--fg);font:12px var(--mono)}
+.search input::placeholder{color:var(--fg-3)}
+.search svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);fill:var(--fg-3)}
+.search .count{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:11px var(--mono);color:var(--fg-3)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:3px 10px 3px 8px;font-size:12px;cursor:pointer;color:var(--fg-2);user-select:none}
+.chip i{width:8px;height:8px;border-radius:50%;display:block}
+.chip[aria-pressed="true"]{color:var(--fg);border-color:var(--fg-3);background:var(--panel-2)}
+.chip[aria-pressed="false"] i{opacity:.3}
+.chip .n{font:10px var(--mono);color:var(--fg-3)}
+.spacer{flex:1}
+.zoomctl{display:flex;align-items:center;gap:4px}
+.ibtn{border:1px solid var(--line-2);background:var(--panel);border-radius:6px;height:28px;min-width:28px;padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--fg-2)}
+.ibtn:hover{color:var(--fg);border-color:var(--fg-3)}
+.ibtn.primary{border-color:rgba(255,181,71,.5);color:var(--hot);background:var(--hot-dim)}
+.zoomctl .pct{font:11px var(--mono);color:var(--fg-3);width:42px;text-align:center}
+
+/* canvas */
+.canvas{position:relative;overflow:hidden;cursor:grab;touch-action:none;background-color:var(--bg);
+  background-image:radial-gradient(circle,#1d232c 1.1px,transparent 1.2px)}
+.canvas.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.wires .hit{pointer-events:stroke;stroke:transparent;stroke-width:14;fill:none;cursor:pointer}
+.wire{fill:none;stroke-width:1.6;transition:opacity .18s,stroke-width .12s}
+.wire.k-branch{stroke:var(--branch);stroke-dasharray:4 4}
+.wire.k-backend{stroke:#35505a;stroke-dasharray:2 4}
+.wire.k-startup{stroke:var(--startup);opacity:.55;stroke-dasharray:6 4}
+.wire.k-loop{stroke:var(--loop);stroke-dasharray:7 5;stroke-width:1.8}
+.wire.k-hot{stroke:var(--hot);stroke-width:2.2;opacity:.85}
+.wire.k-hot.flow{stroke-dasharray:10 8;animation:flow 1.1s linear infinite}
+.glow{fill:none;stroke:var(--hot);stroke-width:7;opacity:.10;filter:blur(3px);pointer-events:none}
+@keyframes flow{to{stroke-dashoffset:-36}}
+.wire.lit{stroke-width:3.2;opacity:1}
+.wire.k-branch.lit,.wire.k-backend.lit{stroke:#8b97a8}
+.wire.k-startup.lit{opacity:1}
+.wlabel{font:10.5px var(--mono);fill:var(--fg-3);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.wlabel.k-loop{fill:var(--loop)}
+.wlabel.k-hot{fill:#c99245}
+.dim-wires .wire:not(.lit),.dim-wires .glow{opacity:.1}
+.dim-wires .wlabel:not(.lit){opacity:.15}
+.trav{stroke:#fff3dc!important;opacity:1!important}
+.packet{fill:#fff3dc;filter:drop-shadow(0 0 6px var(--hot))}
+
+.lane-h{position:absolute;font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;padding-bottom:6px;border-bottom:1px solid var(--line);width:244px;display:flex;justify-content:space-between}
+.lane-h small{font:10px var(--mono);letter-spacing:0;text-transform:none;color:var(--fg-3)}
+.band{position:absolute;border:1px dashed #22413e;border-radius:10px;background:rgba(95,179,169,.03)}
+.band span{position:absolute;left:12px;top:-9px;padding:0 6px;background:var(--bg);font:600 10px var(--sans);letter-spacing:.14em;color:var(--startup);text-transform:uppercase}
+
+.node{position:absolute;width:244px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:7px;cursor:pointer;user-select:none;transition:opacity .18s,border-color .15s,box-shadow .15s;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.node .hd{display:flex;align-items:center;gap:7px;padding:6px 9px 5px;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;position:relative}
+.node .hd::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:3px;border-radius:7px 7px 0 0;background:var(--lc)}
+.node .tt{font-weight:600;font-size:13px;line-height:1.2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .bd{padding:6px 9px 8px;display:grid;gap:2px}
+.node .fn{font:11px/1.35 var(--mono);color:#c3cdda;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .loc{font:10px var(--mono);color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .tag{font:9.5px var(--mono);padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--fg-3);white-space:nowrap}
+.node.k-hot .tag{color:var(--hot);border-color:rgba(255,181,71,.4)}
+.node.k-startup .tag{color:var(--startup);border-color:rgba(95,179,169,.4)}
+.node .step{font:600 10px var(--mono);color:#1a1206;background:var(--hot);border-radius:3px;padding:0 4px;min-width:14px;text-align:center}
+.node .port{position:absolute;top:24px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--lc);box-sizing:border-box}
+.node .port.in{left:-5px}.node .port.out{right:-5px}
+.node.k-hot{border-color:#3a3226}
+.node.k-branch,.node.k-backend{background:#10141a}
+.node.k-branch .tt,.node.k-backend .tt{color:var(--fg-2)}
+.node:hover{border-color:var(--fg-3)}
+.node.sel{border-color:var(--hot);box-shadow:0 0 0 1px var(--hot),0 0 26px rgba(255,181,71,.22)}
+.node.cur{border-color:#fff3dc;box-shadow:0 0 0 2px #fff3dc,0 0 34px rgba(255,181,71,.45)}
+.node.visited{border-color:#6b5532}
+.dim-nodes .node:not(.lit){opacity:.28}
+.searching .node:not(.hit){opacity:.18}
+.searching .node.hit{border-color:var(--c-parse)}
+.node.dragging{cursor:grabbing;box-shadow:0 14px 30px rgba(0,0,0,.55);z-index:3}
+
+.tip{position:fixed;z-index:20;max-width:300px;background:#0c0f14;border:1px solid var(--line-2);border-radius:7px;padding:9px 11px;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:12.5px;color:var(--fg)}
+.tip b{display:block;font-size:12px;margin-bottom:3px;color:var(--hot)}
+.tip code{font:11px var(--mono);color:var(--fg-2)}
+
+/* inspector */
+.insp{background:var(--bg-2);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:16px;z-index:4}
+.insp h2{margin:0;font-size:19px;line-height:1.15;font-weight:700;text-wrap:balance}
+.insp .eyebrow{display:flex;gap:8px;align-items:center;font:600 10.5px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.insp .eyebrow i{width:8px;height:8px;border-radius:2px;background:var(--lc)}
+.insp .fnline{font:12px var(--mono);color:#c3cdda;word-break:break-word;margin-top:6px}
+.insp .src{display:inline-flex;gap:6px;align-items:center;font:11.5px var(--mono);margin-top:6px;color:var(--c-parse);text-decoration:none;word-break:break-all}
+.insp .src:hover{text-decoration:underline}
+.insp p{margin:0;color:var(--fg-2);font-size:13.5px;line-height:1.55;max-width:62ch}
+.sec{display:grid;gap:7px}
+.sec > h3{margin:0;font:600 10.5px var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-3)}
+.payload{margin:0;background:#080a0d;border:1px solid var(--line);border-left:2px solid var(--hot);border-radius:5px;padding:9px 10px;font:11px/1.5 var(--mono);color:#e9d5b0;white-space:pre-wrap;word-break:break-word;overflow-x:auto}
+.payload .c{color:var(--fg-3)}
+.calls{list-style:none;margin:0;padding:0;display:grid;gap:1px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.calls li{background:var(--panel);padding:6px 9px;display:flex;flex-direction:column;gap:1px}
+.calls li span{font:11px var(--mono);color:#c3cdda;min-width:0;word-break:break-word}
+.calls li a{font:10.5px var(--mono);color:var(--fg-3);white-space:nowrap;text-decoration:none}
+.calls li a:hover{color:var(--c-parse)}
+.jumps{display:flex;flex-wrap:wrap;gap:5px}
+.jump{border:1px solid var(--line-2);background:var(--panel);border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--fg-2);text-align:left}
+.jump:hover{color:var(--fg);border-color:var(--fg-3)}
+.jump i{width:6px;height:6px;border-radius:50%;background:var(--lc);flex:none}
+.jump.hot{border-color:rgba(255,181,71,.35);color:var(--fg)}
+.jump em{font-style:normal;font:10px var(--mono);color:var(--fg-3)}
+.navrow{display:flex;gap:6px}
+.navrow .ibtn{flex:1}
+.narr{border:1px solid rgba(255,181,71,.35);background:linear-gradient(180deg,rgba(255,181,71,.08),transparent);border-radius:7px;padding:10px 12px;display:grid;gap:5px}
+.narr .k{font:600 10.5px var(--mono);color:var(--hot);letter-spacing:.04em}
+.narr p{color:var(--fg)}
+.empty{color:var(--fg-2);display:grid;gap:12px}
+.empty ol{margin:0;padding-left:18px;display:grid;gap:6px}
+.kbd{font:10.5px var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--fg-2)}
+.closeinsp{display:none}
+.tip .ex{display:block;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--fg-2);font-size:12px}
+.tip .ex i{font-style:normal;font:600 10px var(--mono);color:var(--c-parse);letter-spacing:.04em;margin-right:4px}
+.tip .hint{display:block;margin-top:6px;font:10.5px var(--mono);color:var(--fg-3)}
+.card{position:absolute;z-index:4;width:310px;box-sizing:border-box;background:#0d1116;border:1px solid rgba(255,181,71,.55);border-radius:9px;box-shadow:0 14px 40px rgba(0,0,0,.6),0 0 0 4px rgba(255,181,71,.06);padding:11px 12px 10px;display:grid;gap:8px}
+.card .top{display:flex;align-items:center;gap:8px}
+.card .top small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em;flex:1}
+.card .x{border:0;background:none;color:var(--fg-3);cursor:pointer;font-size:14px;padding:0 2px;line-height:1}
+.card .x:hover{color:var(--fg)}
+.card h4{margin:0;font-size:15px;line-height:1.2;text-wrap:balance}
+.card .fnc{font:10.5px var(--mono);color:var(--fg-3);margin-top:2px;word-break:break-word}
+.card p{margin:0;font-size:13px;line-height:1.5;color:var(--fg)}
+.card .ex{font-size:12px;color:var(--fg-2);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:6px 8px;line-height:1.45}
+.card .ex b{font:600 10px var(--mono);color:var(--c-parse);letter-spacing:.04em;margin-right:4px}
+.card .ex code{font:11px var(--mono);color:#c3cdda}
+.card .row{display:flex;gap:6px;align-items:center}
+.card .row .ibtn{height:30px}
+.card .row .grow{flex:1}
+.card .more{font-size:11.5px;color:var(--fg-3);background:none;border:0;cursor:pointer;padding:0;text-decoration:underline dotted}
+.card .more:hover{color:var(--fg)}
+.card::before{content:"";position:absolute;width:10px;height:10px;background:#0d1116;border-left:1px solid rgba(255,181,71,.55);border-bottom:1px solid rgba(255,181,71,.55);top:18px;left:-6px;transform:rotate(45deg)}
+.card.right::before{left:auto;right:-6px;transform:rotate(-135deg)}
+.card.below::before,.card.docked::before{display:none}
+@media (max-width:860px){ .card.docked{left:12px!important;right:12px;top:auto!important;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:auto} }
+
+/* transport */
+.transport{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(15,19,24,.94);border:1px solid var(--line-2);border-radius:10px;padding:7px 9px 7px 12px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:4;max-width:calc(100% - 32px);box-sizing:border-box}
+.transport .lbl{display:grid;min-width:0;width:300px}
+.transport .lbl small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em}
+.transport .lbl span{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.transport .prog{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:4px}
+.transport .prog b{display:block;height:100%;background:var(--hot);width:0;transition:width .3s}
+.transport .ibtn{height:30px;min-width:30px}
+.transport label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-2);white-space:nowrap;cursor:pointer}
+.transport input{accent-color:var(--hot)}
+
+.legend{position:absolute;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:5px;background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:11.5px;color:var(--fg-2);z-index:3}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend svg{flex:none}
+.mini{position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;z-index:3;cursor:pointer}
+.mini rect.v{fill:rgba(255,181,71,.07);stroke:var(--hot);stroke-width:1}
+
+@media (max-width: 1100px){ .legend{display:none} }
+@media (max-width: 860px){
+  .app{grid-template-columns:1fr}
+  .insp{position:fixed;left:0;right:0;bottom:0;max-height:52%;border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(0,0,0,.5)}
+  .insp.closed{display:none}
+  .closeinsp{display:inline-flex;position:absolute;right:12px;top:12px}
+  .mini{display:none}
+  .transport .lbl{width:150px}
+  .transport label{display:none}
+  .search{flex:1 1 100%}
+}
+@media (prefers-reduced-motion: reduce){ .wire.k-hot.flow{animation:none} .node,.wire{transition:none} }
+</style>
+<style>
+/* Back link to the index page (added for the repo). */
+.home{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px 0 7px;border:1px solid var(--line-2);border-radius:6px;color:var(--fg-2);text-decoration:none;font-size:12px;white-space:nowrap;flex:none}
+.home:hover{color:var(--fg);border-color:var(--fg-3)}
+.home svg{flex:none}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <a class="home" href="index.html" title="Back to all tracers"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3 2 8l5 5M2.5 8H14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>All tracers</a>
+    <div class="brand"><b>llama.cpp</b><span>request tracer · <a id="commitlink" href="https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a" target="_blank" rel="noopener">2ca15f5</a> · Oct 4 2026</span></div>
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 9.6a5.5 5.5 0 1 0-1.1 1.1l3.9 3.9 1.1-1.1-3.9-3.9zM6.3 10.3a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+      <input id="q" type="search" placeholder="Search functions, files…" aria-label="Search nodes" autocomplete="off">
+      <span class="count" id="qcount"></span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Filter by status"></div>
+    <div class="spacer"></div>
+    <div class="zoomctl">
+      <button class="ibtn primary" id="btnHot" title="Fit the common request path">Hot path</button>
+      <button class="ibtn" id="btnOut" aria-label="Zoom out">−</button>
+      <span class="pct" id="pct">100%</span>
+      <button class="ibtn" id="btnIn" aria-label="Zoom in">+</button>
+      <button class="ibtn" id="btnFit" title="Fit everything (F)">Fit</button>
+    </div>
+  </header>
+
+  <main class="canvas" id="canvas" aria-label="Request flow graph">
+    <div class="world" id="world">
+      <svg class="wires" id="wires" width="1" height="1">
+        <defs></defs>
+        <g id="glows"></g><g id="wiresG"></g><g id="labels"></g><g id="hits"></g>
+        <circle class="packet" id="packet" r="5" cx="-100" cy="-100"/>
+      </svg>
+    </div>
+
+    <div class="legend" aria-label="Legend">
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#ffb547" stroke-width="2.2" stroke-dasharray="10 6"/></svg>Hot path · streaming chat on GPU</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#b993ff" stroke-width="1.8" stroke-dasharray="7 5"/></svg>Per-token loop</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#4a5463" stroke-width="1.6" stroke-dasharray="4 4"/></svg>Alternate route / optional feature</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#5fb3a9" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Startup (runs once)</div>
+    </div>
+
+    <div class="transport" id="transport">
+      <button class="ibtn" id="tFirst" aria-label="Restart trace" title="Restart">⏮</button>
+      <button class="ibtn" id="tPrev" aria-label="Previous step" title="Previous (←)">◀</button>
+      <button class="ibtn primary" id="tPlay" aria-label="Play trace" title="Play / pause (Space)">▶ Trace</button>
+      <button class="ibtn" id="tNext" aria-label="Next step" title="Next (→)">▶▶</button>
+      <div class="lbl"><small id="tStep">TRACE A REQUEST</small><span id="tName">Press ▶ to follow one chat request end to end</span><div class="prog"><b id="tProg"></b></div></div>
+      <label><input type="checkbox" id="tFollow" checked> Follow</label>
+    </div>
+
+    <div class="card" id="card" hidden role="dialog" aria-label="Step details"></div>
+    <svg class="mini" id="mini" width="190" height="104" aria-label="Minimap"></svg>
+  </main>
+
+  <aside class="insp" id="insp" aria-live="polite"></aside>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const SHA = "2ca15f5404760548c39e7b92bd43116a09414a1a";
+const GH = `https://github.com/ggml-org/llama.cpp/blob/${SHA}/`;
+const F = {
+  sc:"tools/server/server-context.cpp", scm:"tools/server/server-common.cpp", sq:"tools/server/server-queue.cpp",
+  sh:"tools/server/server-http.cpp", st:"tools/server/server-task.cpp", sv:"tools/server/server.cpp", ss:"tools/server/server-schema.cpp",
+  chat:"common/chat.cpp", smp:"common/sampling.cpp", com:"common/common.cpp", cmh:"common/common.h",
+  lc:"src/llama-context.cpp", kv:"src/llama-kv-cache.cpp", lm:"src/llama-model.cpp", lg:"src/llama-graph.cpp", ml:"src/models/llama.cpp",
+  voc:"src/llama-vocab.cpp", lla:"src/llama.cpp", gb:"ggml/src/ggml-backend.cpp", cu:"ggml/src/ggml-cuda/ggml-cuda.cu",
+  cpu:"ggml/src/ggml-cpu/ggml-cpu.cpp", lb:"src/llama-batch.cpp", cpuc:"ggml/src/ggml-cpu/ggml-cpu.c", mtl:"ggml/src/ggml-metal/ggml-metal.cpp"
+};
+const LANES = [
+  {id:"client", name:"Client", c:"--c-client", sub:"caller"},
+  {id:"http",   name:"HTTP", c:"--c-http", sub:"cpp-httplib threads"},
+  {id:"parse",  name:"Route & parse", c:"--c-parse", sub:"HTTP thread"},
+  {id:"queue",  name:"Task build", c:"--c-queue", sub:"HTTP thread"},
+  {id:"sched",  name:"Slot scheduler", c:"--c-sched", sub:"inference thread"},
+  {id:"llama",  name:"libllama decode", c:"--c-llama", sub:"src/"},
+  {id:"graph",  name:"Graph build", c:"--c-graph", sub:"src/models"},
+  {id:"ggml",   name:"ggml backends", c:"--c-ggml", sub:"ggml/src"},
+  {id:"samp",   name:"Sampling", c:"--c-samp", sub:"inference thread"},
+  {id:"resp",   name:"Response", c:"--c-resp", sub:"→ HTTP thread"},
+  {id:"client2",name:"Client", c:"--c-client", sub:"SSE consumer"},
+];
+
+/* k: hot | branch | backend | startup.  col,row = grid position.  f/l = file key + line. */
+const N = [
+/* ---------- startup ---------- */
+{id:"s_main",col:1,row:0,k:"startup",t:"main()",fn:"ctx_http.init(params) · ctx_http.start()",f:"sv",l:204,
+ n:"Parse CLI flags and open the HTTP port first. API routes return 503 until the model is loaded.",
+ d:"llama-server starts the HTTP listener before the model is ready. Until load_model returns, a middleware answers every API route (including /health) with 503 \"Loading model\"; only the web UI's static files are served so it can show a loading screen.",
+ c:[["ctx_http.init(params)","sv",204],["middleware_server_state → 503","sh",307],["ctx_http.start()","sv",429],["ctx_server.load_model(params)","sv",481]]},
+{id:"s_load",col:2,row:0,k:"startup",t:"Load model",fn:"server_context::load_model",f:"sc",l:1047,
+ n:"GGUF parse, mmap weights, offload -ngl layers to the GPU, create llama_context and KV cache.",
+ d:"common_init_from_params reads the GGUF header and metadata (architecture, hyper-parameters, tokenizer, chat template), memory-maps tensor data, uploads the offloaded layers to the GPU backend, then creates the llama_context, which allocates the KV cache for n_ctx tokens and reserves worst-case compute graphs.",
+ c:[["common_init_from_params","com",1349],["llama_model_load_from_file(path, mparams)","com",1219],["llama_model_load_from_file (C API)","lla",466]]},
+{id:"s_slots",col:3,row:0,k:"startup",t:"Slots & shared batch",fn:"slots[n_parallel] · batch.init(n_batch)",f:"sc",l:1413,
+ n:"n_parallel slots share one context and one KV cache, each owning its own sequence id.",
+ d:"Each slot is one concurrent conversation. All slots use the same llama_context, separated by seq_id inside the KV cache. One common_batch of n_batch tokens is reused every tick, and --cache-ram enables a host-memory prompt cache.",
+ c:[["batch.init(ctx, max(n_batch, n_parallel))","sc",1415],["prompt_cache = server_prompt_cache(cache_ram_mib)","sc",1426]]},
+{id:"s_loop",col:4,row:0,k:"startup",t:"Start inference loop",fn:"ctx_server.start_loop()",f:"sv",l:548,
+ n:"The main thread becomes the inference thread and never returns.",
+ d:"After loading, main() hands control to the task queue loop. From this point the main thread owns the model and processes all tasks; HTTP threads only post tasks and read results.",
+ c:[["ctx_server.start_loop()","sv",548]]},
+
+/* ---------- client & http ---------- */
+{id:"client",col:0,row:2,k:"hot",t:"Client request",fn:"POST /v1/chat/completions",f:null,
+ n:"Any OpenAI-compatible client: curl, the built-in web UI, or an SDK pointed at :8080/v1.",
+ d:"The request carries chat messages, optional sampling parameters, and stream:true. Everything that follows is what llama-server does to turn that JSON into a stream of tokens.",
+ p:`POST /v1/chat/completions
+{
+  "model": "llama-3.1-8b-instruct",
+  "messages": [
+    {"role": "user", "content": "Why is the sky blue?"}
+  ],
+  "stream": true,
+  "max_tokens": 128
+}`},
+{id:"http_srv",col:1,row:2,k:"hot",t:"HTTP listener",fn:"server_http_context · httplib::Server",f:"sh",l:170,
+ n:"cpp-httplib accepts the socket and runs the handler on a pool thread.",
+ d:"One httplib::ThreadPool is shared by all listeners, so each request gets its own HTTP worker thread. That thread never touches the model: it builds tasks, posts them, and waits for results.",
+ c:[["httplib::ThreadPool (shared pool)","sh",24],["srv = make_unique<httplib::Server>()","sh",170],["server_http_context::post (register)","sh",696]],
+ p:`<span class="c">// HTTP worker thread picks up the connection</span>
+headers parsed, body = 158 bytes JSON`},
+{id:"routes",col:1,row:3,k:"hot",t:"Route table",fn:'ctx_http.post("/v1/chat/completions", …)',f:"sv",l:267,
+ n:"Path → handler lambda. ex_wrapper turns exceptions into OpenAI-shaped errors.",
+ d:"server.cpp makes 55 route registrations, many of them aliases (/v1/x and /x). /v1/chat/completions and /chat/completions both map to routes.post_chat_completions. When --api-key is set, a middleware checks the Authorization or X-Api-Key header before any handler runs.",
+ c:[["middleware_validate_api_key","sh",260],["/v1/completions → post_completions_oai","sv",265],["/v1/chat/completions → post_chat_completions","sv",267],["/v1/responses → post_responses_oai","sv",269],["/v1/messages → post_anthropic_messages","sv",273],["/v1/embeddings → post_embeddings_oai","sv",277]]},
+
+/* ---------- route & parse ---------- */
+{id:"r_chat",col:2,row:2,k:"hot",t:"Chat completions handler",fn:"routes.post_chat_completions",f:"sc",l:5149,
+ n:"Parse JSON, convert messages into one prompt, call the shared completion engine.",
+ d:"The lambda parses the body with nlohmann::json, calls oaicompat_chat_params_parse to turn messages into a single templated prompt (collecting any image or audio parts), then calls handle_completions_impl with TASK_RESPONSE_TYPE_OAI_CHAT so results come back as chat.completion.chunk objects.",
+ c:[["json body = json::parse(req.body)","sc",5152],["oaicompat_chat_params_parse(body, chat_params, files)","sc",5153],["handle_completions_impl(…, OAI_CHAT)","sc",5157]]},
+{id:"parse",col:2,row:3,k:"hot",t:"OpenAI param parsing",fn:"oaicompat_chat_params_parse",f:"scm",l:1224,
+ n:"Validate messages, tools and response_format against the template's capabilities.",
+ d:"Checks what the chat template supports (tools, reasoning, parallel tool calls), pulls base64 or URL media out of content arrays into files, and turns response_format or a JSON schema into a grammar. The result is a plain llama.cpp completion body with a 'prompt' string.",
+ c:[["common_chat_templates_get_caps","scm",1312],["common_chat_templates_apply(tmpls, inputs)","scm",1386]]},
+{id:"tmpl",col:2,row:4,k:"hot",t:"Chat template render",fn:"common_chat_templates_apply",f:"chat",l:1440,
+ n:"The model's own Jinja template (from GGUF metadata) turns messages into prompt text.",
+ d:"Runs the chat template through llama.cpp's built-in Jinja engine. Besides the prompt it returns the generation prompt, any grammar for tool calls, extra stop strings, and the parser config used later to split reasoning and tool calls back out of the generated text. If the template emits the BOS text and the tokenizer will add BOS anyway, the text copy is stripped so the prompt doesn't start with two BOS tokens.",
+ c:[["common_chat_templates_apply","chat",1440],["strip template BOS when tokenizer adds one","chat",959],["called from params parse","scm",1386]],
+ p:`<|start_header_id|>user<|end_header_id|>
+
+Why is the sky blue?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+<span class="c">// Llama-3-style; leading &lt;|begin_of_text|&gt; stripped here,
+// the tokenizer re-adds it as token 128000.
+// The real 3.1 template also adds a dated system header.</span>`},
+{id:"r_comp",col:2,row:5,k:"branch",t:"Raw completion routes",fn:"post_completions · post_completions_oai",f:"sc",l:5125,
+ n:"/completion and /v1/completions take a prompt string or token array. No chat template.",
+ d:"Legacy /completion and OpenAI /v1/completions skip templating and hand 'prompt' straight to handle_completions_impl. The prompt may be a string, a token array, or a mix, and arrays of prompts become multiple tasks.",
+ c:[["post_completions (/completion)","sc",5125],["post_completions_oai (/v1/completions)","sc",5137]]},
+{id:"r_other",col:2,row:6,k:"branch",t:"Anthropic & Responses APIs",fn:"post_anthropic_messages · post_responses_oai",f:"sv",l:273,
+ n:"Converted into chat-completions form, then the same parse and template path.",
+ d:"/v1/messages and /v1/responses translate their request shapes into chat form and reuse oaicompat_chat_params_parse and handle_completions_impl. Only the outgoing event format differs (format_anthropic_sse, format_oai_resp_sse).",
+ c:[["/v1/responses","sv",269],["/v1/messages","sv",273],["shared oaicompat_chat_params_parse","sc",5244]]},
+{id:"r_embd",col:2,row:7,k:"branch",t:"Embeddings & rerank",fn:"post_embeddings · post_rerank",f:"sv",l:277,
+ n:"Same queue and slots, but no sampling: pooled vectors come back via send_embedding.",
+ d:"Embedding and rerank requests tokenize, post tasks to the same queue and get batched by update_slots like completions. After decode the server reads pooled embeddings or a relevance score and returns them with send_embedding or send_rerank.",
+ c:[["send_embedding","sc",2219],["send_rerank","sc",2335]]},
+
+/* ---------- task build ---------- */
+{id:"hci",col:3,row:2,k:"hot",t:"Completion task builder",fn:"handle_completions_impl",f:"sc",l:4476,
+ n:"Tokenize, build server_task objects, post them, then stream or wait.",
+ d:"The shared engine behind every completion-style route. It tokenizes the prompt, creates one server_task per prompt (plus child tasks when n > 1), fills task.params, posts the tasks to the inference queue, and returns a streaming response whose next() pulls results one at a time.",
+ c:[["tokenize_input_prompts(vocab, mctx, prompt, true, true)","sc",4518],["task.params = eval_llama_cmpl_schema(…)","sc",4534],["rd.post_tasks(std::move(tasks))","sc",4561],["res->set_next(…) streaming lambda","sc",4633]]},
+{id:"tok",col:3,row:3,k:"hot",t:"Tokenizer",fn:"tokenize_input_prompts → llama_tokenize",f:"scm",l:1015,
+ n:"Prompt text → token ids using the model's vocab. Special markers become single tokens.",
+ d:"Called with add_special=true, so the model's BOS token (128000 for Llama 3) is prepended, and parse_special=true, so template markers like <|eot_id|> map to single special tokens instead of being split into characters. The vocab (BPE, SentencePiece, WordPiece…) comes from the GGUF file.",
+ c:[["tokenize_input_prompts","scm",1015],["llama_tokenize (C API)","voc",4551],["llama_vocab::impl::tokenize","voc",3452]],
+ p:`[128000, 128006, 882, 128007, 271, 10445, 374, 279,
+ 13180, 6437, 30, 128009, 128006, 78191, 128007, 271]
+n_tokens = 16   <span class="c">// ids illustrative (Llama 3 vocab)</span>`},
+{id:"schema",col:3,row:4,k:"hot",t:"Request → task params",fn:"server_schema::eval_llama_cmpl_schema",f:"ss",l:519,
+ n:"Sampling settings, max tokens, stop strings, grammar, cache_prompt.",
+ d:"Validates the body and fills task_params on top of the server's CLI defaults: sampler settings, n_predict (from max_tokens), stop strings, grammar or json_schema, logit_bias, cache_prompt and streaming options.",
+ c:[["eval_llama_cmpl_schema","ss",519],["default samplers / values","cmh",233]],
+ p:`n_predict 128   stream true   cache_prompt true
+temp 0.80  top_k 40  top_p 0.95  min_p 0.05
+<span class="c">// server defaults for fields the request left out</span>`},
+{id:"post",col:3,row:5,k:"hot",t:"Post to inference queue",fn:"rd.post_tasks → server_queue::post",f:"sq",l:525,
+ n:"Push onto queue_tasks under a mutex and wake the inference thread.",
+ d:"server_response_reader records which task ids it will wait for, then server_queue::post appends to queue_tasks and signals the condition variable. From here on the HTTP thread just waits; all model work happens on the inference thread.",
+ c:[["server_response_reader::post_tasks","sq",525],["server_queue::post (vector)","sq",50]],
+ p:`server_task{ id: 7, type: COMPLETION, tokens: 16,
+             id_slot: -1, params.stream: true }`},
+{id:"mtmd",col:3,row:6,k:"branch",t:"Multimodal prompt",fn:"process_mtmd_prompt",f:"scm",l:930,
+ n:"Images or audio are encoded by the mmproj model into embedding chunks between text tokens.",
+ d:"When the server was started with --mmproj, media parts are split out into mtmd chunks. During prefill each image chunk is encoded (process_mtmd_chunk) and its embeddings are fed to the language model in place of tokens.",
+ c:[["process_mtmd_prompt","scm",930],["process_mtmd_chunk","sc",770]]},
+
+/* ---------- slot scheduler ---------- */
+{id:"loop",col:4,row:2,k:"hot",t:"Inference loop",fn:"server_queue::start_loop",f:"sq",l:278,
+ n:"One thread: hand out new tasks, then run one update_slots tick. Repeat.",
+ d:"llama-server's concurrency model in one function. process_new_tasks() gives each queued task to process_single_task, then callback_update_slots() runs one batched decode step across every active slot. With nothing to do it sleeps on a condition variable.",
+ c:[["process_new_tasks(false)","sq",301],["callback_update_slots()","sq",310],["on_new_task → process_single_task","sc",1475],["on_update_slots → update_slots","sc",1478]]},
+{id:"pst",col:4,row:3,k:"hot",t:"Dispatch task",fn:"process_single_task",f:"sc",l:2513,
+ n:"COMPLETION task → find an idle slot, or defer until one frees.",
+ d:"Switches on task type. For completions it asks get_available_slot for an idle slot. If all n_parallel slots are busy, the task is deferred and retried when a slot is released. Other task types handled here: CANCEL, METRICS, SLOT_SAVE / RESTORE / ERASE, GET_LORA / SET_LORA, and the NEXT_RESPONSE no-op that keeps the loop spinning.",
+ c:[["server_slot * slot = get_available_slot(task)","sc",2537],["no free slot → queue_tasks.defer(task)","sc",2546],["launch_slot_with_task(*slot, task)","sc",2570]]},
+{id:"getslot",col:4,row:4,k:"hot",t:"Pick a slot",fn:"get_available_slot",f:"sc",l:1614,
+ n:"Prefer the idle slot whose cached tokens share the longest prefix with this prompt.",
+ d:"For each idle slot it measures the longest common prefix with the new prompt. The best match above --slot-prompt-similarity (default 0.1) wins, so a follow-up turn lands on the slot that already holds the conversation in its KV cache. Otherwise the least recently used slot is chosen.",
+ c:[["lcp_len = tokens.get_common_prefix(task.tokens)","sc",1651],["fallback: selected slot by LRU","sc",1697],["prompt_save / prompt_load (RAM cache)","sc",1714]],
+ p:`slot 0: empty         slot 1: busy (task 6)
+→ slot 0 selected (LRU, no prefix match yet)`},
+{id:"pcache",col:4,row:10,k:"branch",t:"Host prompt cache",fn:"server_prompt_cache::load",f:"st",l:1804,
+ n:"--cache-ram: park a slot's KV state in RAM and restore it when a matching prompt returns.",
+ d:"Before a slot is reused for a different prompt, its state can be saved into a size-limited host-memory cache. When a later prompt matches a cached entry better than any slot, that state is loaded back into the slot instead of re-running prefill.",
+ c:[["server_prompt_cache::load","st",1804],["ret->prompt_save(*prompt_cache)","sc",1714]]},
+{id:"launch",col:4,row:5,k:"hot",t:"Launch slot",fn:"launch_slot_with_task",f:"sc",l:1774,
+ n:"Bind task to slot, build its sampler chain, set state to STARTED.",
+ d:"Moves the task into the slot, creates a common_sampler from task.params.sampling (penalties, top-k, top-p, temperature, grammar…), resets counters and sets SLOT_STATE_STARTED so the next update_slots tick processes its prompt.",
+ c:[["slot.smpl.reset(common_sampler_init(model, sampling))","sc",1850],["state = SLOT_STATE_STARTED","sc",1891],["common_sampler_init","smp",191]],
+ p:`slot 0: IDLE → STARTED   task 7   n_predict 128`},
+{id:"upd",col:4,row:6,k:"hot",t:"Scheduling tick",fn:"update_slots",f:"sc",l:2932,
+ n:"Build one shared batch for all slots and decode it. Runs once per loop iteration.",
+ d:"Continuous batching lives here. The tick keeps the loop alive while any slot is busy (posting NEXT_RESPONSE), applies context shift if a slot ran out of room, adds one sampled token for every GENERATING slot, then fills the remaining batch space with prompt tokens from slots that are still in prefill. One llama_decode call serves all of them.",
+ c:[["post NEXT_RESPONSE while slots busy","sc",2967],["context shift check","sc",3050],["batch pending prompts up to n_batch","sc",3255]]},
+{id:"reuse",col:4,row:7,k:"hot",t:"Reuse cached prefix",fn:"get_common_prefix → n_past",f:"sc",l:3378,
+ n:"Keep the tokens this slot already has in KV cache; only evaluate the new suffix.",
+ d:"With cache_prompt (on by default) the slot compares the new tokens with what it already evaluated. The shared prefix stays in the KV cache, everything after it is removed with seq_rm, and only the remainder is fed to the model. On a chat follow-up this usually skips the whole earlier conversation. --cache-reuse can also shift matching chunks into place.",
+ c:[["n_past = prompt.tokens.get_common_prefix(input)","sc",3378],["n_cache_reuse chunk shifting","sc",3413],["slot.mem.seq_rm(slot.id, p0, -1)","sc",3608],["llama_kv_cache::seq_rm","kv",382],["stats.n_prompt_cached = n_past","sc",3573]],
+ p:`first turn: n_past = 0 → evaluate all 16 tokens
+<span class="c">// next turn: n_past ≈ old prompt + old reply</span>`},
+{id:"batchb",col:4,row:8,k:"hot",t:"Batch assembly",fn:"batch.add(token, pos, seq_id, logits)",f:"sc",l:3708,
+ n:"Copy prompt tokens in up to n_batch. Only the last token asks for logits.",
+ d:"Prompt tokens go into the shared common_batch with their positions and the slot's seq_id until the prompt is done or n_batch is full (long prompts span several ticks). Only the final prompt token is marked for output, so logits are computed for that one position. The slot then moves to SLOT_STATE_DONE_PROMPT.",
+ c:[["while (n_tokens < task->n_tokens && batch.size() < n_batch)","sc",3708],["state = SLOT_STATE_DONE_PROMPT","sc",3790],["add sampled token for GENERATING slots","sc",524]],
+ p:`batch: 16 tokens   seq_id 0   pos 0…15
+logits: only pos 15`},
+{id:"ctxshift",col:4,row:11,k:"branch",t:"Context shift",fn:"seq_rm + seq_add (n_keep, n_discard)",f:"sc",l:3050,
+ n:"Optional: when n_ctx fills, drop older tokens and slide KV positions instead of stopping.",
+ d:"Off by default (--context-shift turns it on); without it, generation simply stops at n_ctx. When enabled and a generating slot fills its context, it keeps the first n_keep tokens, discards n_discard of the rest (half by default), and shifts the remaining KV cells' positions with seq_add rather than recomputing them.",
+ c:[["n_ctx limit check","sc",3050],["slot.mem.seq_add(…, -n_discard)","sc",3089]]},
+{id:"spec",col:4,row:12,k:"branch",t:"Speculative draft",fn:"common_speculative_draft",f:"sc",l:3191,
+ n:"A draft model, n-gram cache or MTP head proposes several tokens to verify in one pass.",
+ d:"With speculative decoding configured, a cheap drafter proposes the next few tokens. They are appended to the batch after the real sampled token, so the target model scores all of them in a single decode and accepts the longest matching run.",
+ c:[["common_speculative_draft(spec)","sc",3191]]},
+{id:"srvdec",col:4,row:9,k:"hot",t:"Server decode",fn:"server_context::decode",f:"sc",l:3844,
+ n:"Call llama_process on the batch. On failure, halve n_batch and retry.",
+ d:"Runs llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) inside yield_to_queue, so a worker thread can keep accepting new tasks while the GPU is busy. If the KV cache can't place the batch, it retries with a smaller n_batch. On success, post_decode gives each slot its output row.",
+ c:[["queue_tasks.yield_to_queue(…)","sc",3878],["llama_process(ctx_tgt, DECODE, batch.view)","sc",3879],["restore n_batch / retry smaller","sc",3024]]},
+
+/* ---------- libllama ---------- */
+{id:"lp",col:5,row:2,k:"hot",t:"llama_decode entry",fn:"llama_process → llama_context::decode",f:"lc",l:4478,
+ n:"The public C API boundary. Server code ends here; the model library takes over.",
+ d:"llama_process dispatches DECODE to llama_context::decode, which validates the batch, plans KV memory, then loops over micro-batches and runs a compute graph for each one.",
+ c:[["llama_process","lc",4478],["llama_context::decode","lc",1712]]},
+{id:"balloc",col:5,row:3,k:"hot",t:"Batch validation",fn:"llama_batch_allocr::init",f:"lc",l:1768,
+ n:"Check token ids, positions and seq ids; record which rows produce outputs.",
+ d:"The batch allocator validates every token id against the vocab, checks that each sequence's positions are consistent with what is already in memory, generates positions when the caller left them out, and counts output rows so the logits buffer can be sized.",
+ c:[["balloc->init(batch_inp, vocab, output_all)","lc",1768],["invalid token check","lb",80],["auto-generate missing positions","lb",1291]]},
+{id:"kv",col:5,row:4,k:"hot",t:"KV cache planning",fn:"llama_kv_cache::init_batch → find_slot",f:"kv",l:702,
+ n:"Split into micro-batches of n_ubatch and reserve KV cells for each.",
+ d:"The memory module splits the batch into micro-batches of at most n_ubatch tokens (512 by default). For each, find_slot locates free cells in the KV cache. If there is no room, decode logs \"failed to find a memory slot\" and returns 1, and the server retries with a smaller batch.",
+ c:[["memory->init_batch(*balloc, n_ubatch)","lc",1814],["llama_kv_cache::init_batch","kv",702],["prepare(ubatches)","kv",751],["find_slot(ubatch)","kv",898],["no room → return 1","lc",1843]],
+ p:`1 ubatch × 16 tokens → KV cells 0…15 (seq 0)`},
+{id:"pub",col:5,row:5,k:"hot",t:"Micro-batch step",fn:"llama_context::process_ubatch",f:"lc",l:1398,
+ n:"Commit KV cells, reuse or build the graph, write inputs, run it.",
+ d:"mctx->apply() commits the planned KV cells (apply_ubatch). If the previous graph has the same shape it is reused, which is the norm for 1-token decode steps. Otherwise build_graph creates a fresh one and the scheduler allocates it. set_inputs writes token ids, positions and the attention mask, then graph_compute runs it.",
+ c:[["mctx->apply() → apply_ubatch","kv",1097],["res->can_reuse(gparams)","lc",1412],["gf = model.build_graph(gparams)","lc",1432],["res->set_inputs(&ubatch)","lc",1456],["graph_compute(gf, n_tokens > 1)","lc",1461]]},
+
+/* ---------- graph build ---------- */
+{id:"build",col:6,row:2,k:"hot",t:"Graph builder",fn:"llama_model::build_graph",f:"lm",l:2900,
+ n:"Dispatch on architecture. Each model family has a builder in src/models (158 files).",
+ d:"llama.cpp describes every architecture as a ggml compute graph. build_graph picks the builder for the GGUF's architecture; for Llama-family models that is llama_model_llama::build_arch_graph. Nothing runs yet: ggml only records the operations.",
+ c:[["llama_model::build_graph","lm",2900],["case LLM_ARCH_LLAMA","lm",3068],["llama_model_llama::build_arch_graph","ml",94]]},
+{id:"block",col:6,row:3,k:"hot",t:"Transformer block × n_layer",fn:"for (il = 0; il < n_layer; ++il)",f:"ml",l:126,
+ n:"Embed tokens, then per layer: RMSNorm → Q/K/V projections → RoPE.",
+ d:"build_inp_embd looks up token embeddings. Each layer applies RMSNorm, projects Q, K and V with the (usually quantized) weight matrices, and rotates Q and K with ggml_rope_ext using each token's position.",
+ c:[["build_inp_embd(model.tok_embd)","ml",108],["build_norm (attn_norm)","ml",132],["build_qkv","ml",143],["ggml_rope_ext (Q, K)","ml",146]],
+ p:`32 layers × [16 tokens × 4096]   <span class="c">// 8B shape</span>`},
+{id:"attn",col:6,row:4,k:"hot",t:"Attention + KV cache",fn:"build_attn → build_attn_mha",f:"lg",l:2787,
+ n:"Store new K/V in the cache, then attend over every cached position of this sequence.",
+ d:"New K and V are written into this slot's KV cells (cpy_k / cpy_v), views over the cached sequence are read back (get_k / get_v), and attention runs as one fused ggml_flash_attn_ext when flash attention is enabled, otherwise as KQ matmul, masked softmax and KQV. The mask keeps sequences from different slots apart in a shared batch.",
+ c:[["build_attn","lg",2787],["build_attn_mha","lg",2620],["ggml_flash_attn_ext","lg",2664],["llama_kv_cache::cpy_k","kv",1328],["llama_kv_cache::get_k","kv",1276]]},
+{id:"ffn",col:6,row:5,k:"hot",t:"Feed-forward (SwiGLU)",fn:"build_norm → build_ffn",f:"lg",l:1766,
+ n:"RMSNorm, gate and up projections, SiLU, down projection, residual add.",
+ d:"The residual stream is normalised again and passed through the gated MLP: SiLU(gate·x) ⊙ (up·x), then down. These three matmuls hold most of the weights, so they dominate time in both prefill and decode.",
+ c:[["build_norm (ffn_norm)","ml",184],["build_ffn","lg",1766]]},
+{id:"moe",col:6,row:8,k:"branch",t:"Mixture-of-experts FFN",fn:"build_moe_ffn",f:"lg",l:2011,
+ n:"A router picks the top-k experts per token (Mixtral, Qwen-MoE, DeepSeek…).",
+ d:"MoE models replace the dense FFN with a router and expert matrices. Only the selected experts are multiplied for each token, using ggml_mul_mat_id. In the Llama builder, a layer takes this branch when it has a router tensor (ffn_gate_inp), as in Mixtral GGUFs.",
+ c:[["build_moe_ffn","lg",2011],["dense if ffn_gate_inp == nullptr, else MoE","ml",182]]},
+{id:"head",col:6,row:6,k:"hot",t:"Output head",fn:"build_norm → build_lora_mm(output)",f:"ml",l:231,
+ n:"Final norm and vocab projection, computed only for rows that need logits.",
+ d:"Rows that don't need logits were already dropped inside the last layer: ggml_get_rows with inp_out_ids keeps only rows marked for output (here, just the last prompt token), so the last FFN and the head skip the other 15. The final RMSNorm and the output matrix then produce one logits vector of n_vocab floats.",
+ c:[["build_inp_out_ids()","ml",124],["last layer: ggml_get_rows(cur, inp_out_ids)","ml",175],["final build_norm","ml",231],["build_lora_mm(model.output)","ml",240],["ggml_build_forward_expand(gf, cur)","ml",246]]},
+{id:"salloc",col:6,row:7,k:"hot",t:"Schedule & allocate",fn:"ggml_backend_sched_alloc_graph",f:"gb",l:2148,
+ n:"Assign each op to a device, cut the graph into splits, allocate tensor memory.",
+ d:"ggml_backend_sched_split_graph decides where each op runs, based on where its weights live (the -ngl offload) and what each backend supports, and cuts the graph into splits with copies between devices. ggml-alloc plans buffer reuse. A reused graph skips this step.",
+ c:[["ggml_backend_sched_alloc_graph","gb",2148],["ggml_backend_sched_split_graph","gb",1206],["called from process_ubatch","lc",1442]]},
+
+/* ---------- ggml ---------- */
+{id:"compute",col:7,row:2,k:"hot",t:"Graph compute",fn:"ggml_backend_sched_graph_compute_async",f:"gb",l:2173,
+ n:"Run each split on its backend, copying inputs across devices when needed.",
+ d:"graph_compute calls the scheduler, whose compute_splits loop copies each split's inputs from other backends if required and launches it with ggml_backend_graph_compute_async. Work is asynchronous; the server only synchronizes when it needs logits.",
+ c:[["llama_context::graph_compute","lc",1461],["ggml_backend_sched_graph_compute_async","gb",2173],["ggml_backend_sched_compute_splits","gb",1802],["graph_compute_async(split_backend)","gb",1955]]},
+{id:"cuda",col:7,row:3,k:"hot",t:"CUDA backend",fn:"ggml_cuda_graph_evaluate_and_capture",f:"cu",l:4280,
+ n:"ggml ops become CUDA kernels. Decode steps can replay a captured CUDA graph.",
+ d:"Quantized matmuls run through ggml_cuda_mul_mat (MMVQ kernels for single-token decode, MMQ or cuBLAS for large prefill batches). For repeated decode shapes the graph is captured once as a CUDA graph and replayed, cutting kernel launch overhead. This path assumes an NVIDIA GPU with all layers offloaded.",
+ c:[["ggml_cuda_graph_evaluate_and_capture","cu",4280],["ggml_cuda_mul_mat","cu",1875]]},
+{id:"metal",col:7,row:5,k:"backend",t:"Metal backend",fn:"ggml_backend_metal_graph_compute",f:"mtl",l:550,
+ n:"Apple Silicon: compute encoders over unified memory.",
+ d:"On macOS the same graph runs through Metal kernels. Unified memory means weights don't need copying between host and device.",
+ c:[["ggml_backend_metal_graph_compute","mtl",550]]},
+{id:"cpu",col:7,row:6,k:"backend",t:"CPU backend",fn:"ggml_backend_cpu_graph_compute",f:"cpu",l:170,
+ n:"Threadpool over graph nodes with SIMD quantized dot products. Also runs non-offloaded layers.",
+ d:"Splits each op across threads and uses AVX2/AVX-512/NEON kernels for quantized formats. With partial -ngl offload, some splits run here and others on the GPU.",
+ c:[["ggml_backend_cpu_graph_compute","cpu",170],["ggml_graph_compute","cpuc",3391]]},
+{id:"others",col:7,row:7,k:"backend",t:"Other backends",fn:"Vulkan · HIP · SYCL · OpenCL · RPC…",f:"gbdir",
+ n:"Same interface, different kernels. Picked at load time from what's compiled in.",
+ d:"Each backend implements the ggml_backend interface (graph_compute, buffers, supports_op). The scheduler treats them interchangeably.",
+ c:[]},
+{id:"logits",col:7,row:4,k:"hot",t:"Logits readout",fn:"llama_get_logits_ith",f:"lc",l:4002,
+ n:"After sync, one row of n_vocab floats per output token is back on the host.",
+ d:"Logits are copied into the context's output buffer, and output_reorder restores batch order. The sampler reads the row at this slot's i_batch.",
+ c:[["llama_get_logits_ith","lc",4002],["llama_context::get_logits_ith","lc",946],["output_reorder","lc",2311]],
+ p:`float[128256]  for batch row 15`},
+
+/* ---------- sampling ---------- */
+{id:"postdec",col:8,row:2,k:"hot",t:"Post-decode dispatch",fn:"post_decode",f:"sc",l:3983,
+ n:"Find slots whose output row is in this sub-batch. Prefill finished → GENERATING.",
+ d:"Walks the slots, skipping those still mid-prefill. A slot that just finished its prompt switches to SLOT_STATE_GENERATING, and every generating slot samples from its own row of the logits.",
+ c:[["post_decode","sc",3983],["slot.state = SLOT_STATE_GENERATING","sc",4043],["tok_idx = slot.i_batch - off","sc",4057]],
+ p:`slot 0: DONE_PROMPT → GENERATING   tok_idx 15`},
+{id:"sample",col:8,row:3,k:"hot",t:"Sampler chain",fn:"common_sampler_sample",f:"smp",l:602,
+ n:"penalties → DRY → top-n-σ → top-k → typical → top-p → min-p → XTC → temp → draw",
+ d:"Applies the chain built at launch to this slot's logits row, in llama.cpp's default order, then draws a token from what's left. With a grammar active, llama.cpp does rejection sampling: it samples normally, checks that one token against the grammar, and only if it is rejected re-runs the chain with the grammar mask applied first. That is much cheaper than masking all 128k candidates every step.",
+ c:[["id = common_sampler_sample(smpl, ctx, tok_idx)","sc",4062],["common_sampler_sample","smp",602],["default sampler order","cmh",264]],
+ p:`top candidates: " The" 0.61  " Sun" 0.12  " Light" 0.07
+→ 578 " The"   <span class="c">// illustrative</span>`},
+{id:"accept",col:8,row:4,k:"hot",t:"Accept token",fn:"common_sampler_accept",f:"smp",l:473,
+ n:"Feed the chosen token back so penalties and grammar state track history.",
+ d:"Updates repetition and DRY penalty history and advances the grammar parser, so the next sample is conditioned on what has been generated.",
+ c:[["common_sampler_accept(smpl, id, true)","sc",4067],["common_sampler_accept","smp",473]]},
+{id:"detok",col:8,row:5,k:"hot",t:"Detokenize",fn:"common_token_to_piece",f:"sc",l:4084,
+ n:"Token id → UTF-8 text piece.",
+ d:"Converts the token to its text piece. Special tokens are rendered only when the request asks for them.",
+ c:[["result.text_to_send = common_token_to_piece(…)","sc",4084]],
+ p:`578 → " The"`},
+{id:"ptok",col:8,row:6,k:"hot",t:"Stop checks",fn:"process_token",f:"sc",l:1900,
+ n:"Append text; check stop strings, end-of-generation, n_predict and partial UTF-8.",
+ d:"Appends the piece to generated_text. Text that could be the start of a stop string, or an incomplete UTF-8 sequence, is held back. A stop string, an EOG token, the n_predict limit or a time limit sets has_next_token = false. Otherwise the new text goes out through send_partial_response.",
+ c:[["find_stopping_strings (full match)","sc",1921],["send_partial_response(slot, result)","sc",1944],["llama_vocab_is_eog → stop","sc",2019]]},
+{id:"specv",col:8,row:7,k:"branch",t:"Draft verification",fn:"common_sampler_sample_and_accept_n",f:"sc",l:4137,
+ n:"Sample at every drafted position and keep the longest run that matches the draft.",
+ d:"With speculative decoding, the target model produced logits for each drafted token. The sampler walks them in order, accepting tokens while they match, then rolls the KV cache back past the first mismatch.",
+ c:[["common_sampler_sample_and_accept_n","sc",4137]]},
+{id:"grammar",col:8,row:8,k:"branch",t:"Grammar constraint",fn:"llama_sampler_init_grammar",f:"smp",l:274,
+ n:"GBNF masks tokens that would break the grammar. Used for JSON schema and tool calls.",
+ d:"response_format, json_schema and tool-call templates compile to a GBNF grammar. Lazy grammars only activate after a trigger string, such as the start of a tool call.",
+ c:[["llama_sampler_init_grammar","smp",274]]},
+
+/* ---------- response ---------- */
+{id:"partial",col:9,row:2,k:"hot",t:"Partial result",fn:"send_partial_response → queue_results.send",f:"sc",l:2113,
+ n:"Wrap the new text in a result object and wake the waiting HTTP thread.",
+ d:"Builds a server_task_result_cmpl_partial with the text delta, token id and optional probabilities, then server_response::send pushes it onto queue_results and notifies every waiting reader.",
+ c:[["send_partial_response","sc",2113],["server_response::send","sq",480]]},
+{id:"final",col:9,row:3,k:"hot",t:"Final result",fn:"send_final_response",f:"sc",l:2156,
+ n:"Finish reason, token counts and timings. The slot is released for the next task.",
+ d:"When has_next_token is false the slot sends a final result carrying the stop reason, token counts and timings (prompt and generation tokens per second), then returns to SLOT_STATE_IDLE with its KV cache intact for prefix reuse. In a stream, the usage object is only sent if the request set stream_options.include_usage; timings are always attached to the last chunk.",
+ c:[["send_final_response","sc",2156],["slot.release()","sc",564],["include_usage → usage chunk","st",502],["timings on last chunk","st",517]]},
+{id:"reader",col:9,row:4,k:"hot",t:"Result reader",fn:"server_response_reader::next",f:"sq",l:550,
+ n:"Back on the HTTP thread: wait for results tagged with this request's task id.",
+ d:"next() blocks on queue_results' condition variable with a timeout, so it can notice a dropped client and cancel the task. Results are matched by task id, which lets many concurrent requests share one result queue.",
+ c:[["server_response_reader::next","sq",550],["res->set_next streaming lambda","sc",4633],["rd.next(…) inside it","sc",4684]]},
+{id:"tojson",col:9,row:5,k:"hot",t:"Chunk formatter",fn:"update_chat_msg → to_json_oaicompat_chat",f:"st",l:988,
+ n:"Re-parse output into content, reasoning and tool-call deltas.",
+ d:"This runs on the HTTP thread: server_response_reader::next calls result->update(state) as each result arrives. task_result_state::update_chat_msg re-parses the accumulated text with common_chat_parse using the template's parser config, diffs it against the previous state, and emits OpenAI deltas: content, reasoning_content or tool_calls fragments.",
+ c:[["result->update(states[idx]) in next()","sq",568],["server_task_result_cmpl_partial::update","st",988],["task_result_state::update_chat_msg","st",162],["common_chat_parse","chat",1447],["to_json_oaicompat_chat (partial)","st",1111]],
+ p:`{"choices":[{"index":0,"delta":{"content":" The"},
+  "finish_reason":null}],"object":"chat.completion.chunk",
+  "id":"chatcmpl-…","model":"llama-3.1-8b-instruct"}`},
+{id:"sse",col:9,row:6,k:"hot",t:"SSE framing",fn:"format_oai_sse",f:"scm",l:1644,
+ n:'One "data: {json}" event per chunk, ending with "data: [DONE]".',
+ d:"Each JSON chunk becomes a server-sent event terminated by a blank line. When the reader has no more results the lambda emits the [DONE] sentinel.",
+ c:[["format_oai_sse","scm",1644],['output = "data: [DONE]\\n\\n"',"sc",4674]],
+ p:`data: {"choices":[{"delta":{"content":" The"}…}]}\\n\\n`},
+{id:"chunked",col:9,row:7,k:"hot",t:"Chunked writer",fn:"chunked_content_provider",f:"sh",l:646,
+ n:"httplib calls next() and writes each chunk to the socket as it arrives.",
+ d:"The response is registered as a chunked content provider. httplib keeps calling it; each call pulls the next SSE string via response->next and writes it to the socket until next() reports the end.",
+ c:[["chunked_content_provider","sh",646],["response->next(chunk)","sh",648],["res.set_chunked_content_provider","sh",666]]},
+{id:"client_sse",col:10,row:4,k:"hot",t:"Client receives stream",fn:"Content-Type: text/event-stream",f:null,
+ n:"The UI renders " + "“The”" + " immediately; more chunks follow, one per token.",
+ d:"The first token is sampled straight from the prefill pass's logits, so time to first token is queue wait + prefill of the uncached prompt. Every following chunk costs one more trip around the generation loop (one decode step per token, shared with other active slots).",
+ p:`data: {… "delta":{"content":" The"} …}
+data: {… "delta":{"content":" sky"} …}
+…
+data: {… "finish_reason":"stop", "timings":{…}}
+data: [DONE]
+<span class="c">// + a usage chunk if stream_options.include_usage</span>`},
+];
+
+/* ex: a concrete example, tip or knob for each node (shown in the hover tooltip and step card) */
+const EX = {
+  s_main:"<code>llama-server -m model.gguf -ngl 99 -c 16384 -np 4</code>",
+  s_load:"Watch the log for <code>offloaded 33/33 layers to GPU</code> to confirm full offload.",
+  s_slots:"By default the server picks 4 slots with a unified KV pool, so any slot can use free space. An explicit <code>-np 4 -c 16384</code> instead gives each slot a fixed 4096 tokens.",
+  s_loop:"Everything to the right of the HTTP lanes runs on this one thread.",
+  client:"<code>curl -N localhost:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{\"messages\":[…],\"stream\":true}'</code>",
+  http_srv:"<code>--threads-http N</code> sets the pool size; <code>--host</code> and <code>--port</code> pick the listener.",
+  routes:"<code>--api-key KEY</code> enables the 401 check; clients send <code>Authorization: Bearer KEY</code>.",
+  r_chat:"Debug tip: <code>POST /apply-template</code> returns the exact prompt this handler would build, without generating.",
+  parse:"Sending <code>tools</code> to a model whose template can't render them is rejected here, before any GPU work.",
+  tmpl:"Override with <code>--chat-template-file my.jinja</code>; check the result with <code>POST /apply-template</code>.",
+  tok:"<code>POST /tokenize</code> with <code>{\"content\":\"…\",\"with_pieces\":true}</code> shows these ids and their text.",
+  schema:"<code>\"temperature\":0</code> gives greedy decoding; <code>\"n_probs\":5</code> returns top-5 probabilities per token.",
+  post:"<code>GET /slots</code> shows each slot's state live (enabled by default).",
+  loop:"<code>-np N</code> sets how many slots this loop serves in each batch.",
+  pst:"All slots busy? The task waits in the deferred queue. Raise <code>-np</code> for more concurrency.",
+  getslot:"Send <code>\"id_slot\": 0</code> to pin a conversation to a slot; tune <code>--slot-prompt-similarity</code>.",
+  launch:"<code>--samplers \"top_k;top_p;min_p;temperature\"</code> changes the chain built here.",
+  upd:"<code>-b / --batch-size</code> (n_batch, default 2048) caps tokens per tick.",
+  reuse:"Look at <code>timings.cache_n</code> vs <code>timings.prompt_n</code> in the response to see how much was reused.",
+  batchb:"A 6,000-token prompt at n_batch 2048 takes 3 ticks. Other slots keep decoding in between.",
+  srvdec:"<code>failed to find a memory slot</code> in the log means the KV cache is full: raise <code>-c</code> or lower <code>-np</code>.",
+  lp:"Apps that embed llama.cpp call this same API from <code>include/llama.h</code>; the server is just one client of it.",
+  balloc:"Each sequence's positions must continue from what is already cached for it, or this step rejects the batch.",
+  kv:"<code>-ub</code> sets n_ubatch (default 512); <code>--cache-type-k q8_0</code> halves K-cache memory.",
+  pub:"<code>LLAMA_GRAPH_REUSE_DISABLE=1</code> forces a rebuild every step; useful when profiling.",
+  build:"The GGUF key <code>general.architecture</code> (e.g. <code>llama</code>, <code>qwen3</code>) selects the builder.",
+  block:"Llama 3.1 8B: 32 layers, width 4096, 32 query heads sharing 8 KV heads (grouped-query attention).",
+  attn:"<code>-fa on|off|auto</code> controls flash attention. KV per token here ≈ 2 × 32 layers × 1024 × 2 bytes = 128 KiB at f16.",
+  ffn:"In an 8B Llama the gate/up/down matrices are about 80% of each layer's weights, so they dominate memory bandwidth.",
+  moe:"Mixtral 8x7B routes each token to 2 of 8 experts, so only about a quarter of FFN weights are read per token.",
+  head:"Here: 1 row × 128,256 logits instead of 16 rows. Skipping the other rows saves a large matmul.",
+  salloc:"<code>-ngl 99</code> keeps every layer on the GPU (one split); partial offload adds CPU splits and copies.",
+  compute:"Prefill is compute-bound (big matmuls); single-token decode is memory-bandwidth-bound (read every weight once).",
+  cuda:"Build with <code>-DGGML_CUDA=ON</code>. Decode speed is roughly GPU memory bandwidth ÷ model size.",
+  metal:"Enabled by default on macOS builds; all layers usually fit in unified memory.",
+  cpu:"<code>-t N</code> sets compute threads; best near the number of physical cores.",
+  others:"Pick at build time: <code>-DGGML_VULKAN=ON</code>, <code>-DGGML_HIP=ON</code>, <code>-DGGML_SYCL=ON</code>…",
+  logits:"<code>\"n_probs\": 5</code> in the request returns top-5 candidates read from this row.",
+  postdec:"With 4 active slots, one decode yields 4 rows here and each slot samples its own.",
+  sample:"<code>\"top_k\":40, \"min_p\":0.05, \"temperature\":0.8</code> are the server defaults.",
+  accept:"<code>repeat_last_n</code> (default 64) is the penalty window this history feeds.",
+  detok:"Emoji often span several tokens; partial UTF-8 is held back until the character is complete.",
+  ptok:"<code>\"stop\": [\"\\n\\n\"]</code> adds stop strings; <code>max_tokens</code> sets n_predict.",
+  specv:"Pays off on predictable text (code, quoting the prompt) where the draft is accepted often; little gain on creative text.",
+  grammar:"<code>\"response_format\":{\"type\":\"json_schema\",…}</code> compiles to a grammar used here.",
+  partial:"With 10 concurrent streams, all results share this one queue, routed by task id.",
+  final:"<code>\"stream_options\":{\"include_usage\":true}</code> adds the usage chunk.",
+  reader:"If the client disconnects, the next poll notices and cancels the task, which frees the slot.",
+  tojson:"Reasoning models emit <code>delta.reasoning_content</code> before <code>delta.content</code>, split out here.",
+  sse:"Each event ends with a blank line; that's how clients know where one JSON chunk ends.",
+  chunked:"No Content-Length header; the response is sent with Transfer-Encoding: chunked until [DONE].",
+  client_sse:"OpenAI SDKs parse these events directly, so <code>for chunk in stream:</code> just works.",
+};
+
+/* edges: [from, to, kind, label] */
+const HOTSEQ = ["client","http_srv","routes","r_chat","parse","tmpl","hci","tok","schema","post","loop","pst","getslot","launch","upd","reuse","batchb","srvdec","lp","balloc","kv","pub","build","block","attn","ffn","head","salloc","compute","cuda","logits","postdec","sample","accept","detok","ptok","partial","reader","tojson","sse","chunked","client_sse"];
+const E = [];
+const HOTLABEL = {"post>loop":"queue_tasks · condvar","partial>reader":"queue_results · condvar","srvdec>lp":"C API","hci>tok":""};
+for (let i=0;i<HOTSEQ.length-1;i++) E.push([HOTSEQ[i],HOTSEQ[i+1],"hot",HOTLABEL[HOTSEQ[i]+">"+HOTSEQ[i+1]]||""]);
+E.push(["ptok","final","hot","EOG / stop / n_predict"],["final","reader","hot",""]);
+E.push(["ptok","upd","loop","next token → next tick"],["pub","compute","loop","graph reused (decode step)"]);
+E.push(
+  ["routes","r_comp","branch"],["routes","r_other","branch"],["routes","r_embd","branch"],
+  ["r_comp","hci","branch"],["r_other","parse","branch"],["r_embd","post","branch"],
+  ["hci","mtmd","branch"],["mtmd","schema","branch"],
+  ["getslot","pcache","branch"],["pcache","launch","branch"],
+  ["upd","ctxshift","branch"],["ctxshift","batchb","branch"],["batchb","spec","branch"],["spec","srvdec","branch"],
+  ["attn","moe","branch"],["moe","head","branch"],
+  ["postdec","specv","branch"],["specv","ptok","branch"],["sample","grammar","branch"],["grammar","accept","branch"],
+  ["compute","metal","backend"],["compute","cpu","backend"],["compute","others","backend"],
+  ["metal","logits","backend"],["cpu","logits","backend"],["others","logits","backend"],
+  ["s_main","s_load","startup"],["s_load","s_slots","startup"],["s_slots","s_loop","startup"],["s_loop","loop","startup"],["s_main","http_srv","startup"]
+);
+
+/* trace steps: id or [id, narration override] */
+const TRACE = HOTSEQ.map(id=>id);
+TRACE.splice(TRACE.length,0,
+  ["ptok","Iteration 2+. The text was sent, has_next_token is still true, so the loop goes around again. The purple cable is the generation loop: every following token repeats from the scheduling tick."],
+  ["upd","Next tick. Slot 0 is GENERATING, so update_slots adds exactly one token (the one just sampled, \" The\" at pos 16) to the batch. Any new requests can be prefilling in the same batch."],
+  ["srvdec","Decode a 1-token batch for slot 0 (plus whatever other slots contribute)."],
+  ["pub","Same shape as last decode step, so can_reuse() is true: no graph rebuild, no re-allocation. Only the inputs (token, position, mask) are rewritten."],
+  ["compute","Replay the graph. On CUDA this is usually a captured CUDA graph, so a whole forward pass is a handful of launches. Attention now reads 17 cached positions."],
+  ["sample","Sample the next token from the fresh logits row: \" sky\". This continues until a stop condition."],
+  ["ptok","Eventually the model emits <|eot_id|> (an end-of-generation token). process_token sets has_next_token = false and the slot stops."],
+  ["final","Final result: finish_reason \"stop\" plus timings (and a usage chunk if stream_options.include_usage was set). The slot goes back to IDLE but keeps its KV cache, so a follow-up turn reuses the prefix."],
+  ["reader","The HTTP thread receives the final result."],
+  ["sse","The final chunk carries finish_reason and timings, then the [DONE] sentinel is written and the stream closes."],
+  ["client_sse","Done. A follow-up message would hit the same slot (longest-prefix match) and skip almost the whole prefill."]
+);
+
+/* ---------------- layout ---------------- */
+const W=244, COLW=300, X0=40, PORTY=28;
+const rowY = r => r===0 ? 86 : 230 + (r-2)*114;
+const byId = {};
+N.forEach(n=>{ n.ex = EX[n.id]||""; n.x = X0 + n.col*COLW; n.y = rowY(n.row); byId[n.id]=n; n.ins=[]; n.outs=[]; });
+const edges = E.map(([a,b,k,label])=>{ const e={a,b,k,label:label||"",key:a+">"+b, ox:0,oy:0,vx:0,vy:0,tx:0,ty:0}; byId[a].outs.push(e); byId[b].ins.push(e); return e; });
+const edgeByKey = Object.fromEntries(edges.map(e=>[e.key,e]));
+const laneOf = n => LANES[n.col];
+const hotIndex = Object.fromEntries(HOTSEQ.map((id,i)=>[id,i+1]));
+
+/* ---------------- DOM refs ---------------- */
+const $ = s => document.querySelector(s);
+const canvas=$("#canvas"), world=$("#world"), wires=$("#wires"), wiresG=$("#wiresG"), glows=$("#glows"), labelsG=$("#labels"), hitsG=$("#hits"), packet=$("#packet"), insp=$("#insp"), tip=$("#tip");
+const SVGNS="http://www.w3.org/2000/svg";
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const srcURL = (f,l) => f==="gbdir" ? `https://github.com/ggml-org/llama.cpp/tree/${SHA}/ggml/src` : GH + F[f] + (l?`#L${l}`:"");
+const srcLabel = (f,l) => f==="gbdir" ? "ggml/src/" : F[f].replace(/^tools\/server\//,"server/") + (l?`:${l}`:"");
+const lcVar = n => `var(${laneOf(n).c})`;
+
+/* lanes headers + startup band */
+LANES.forEach((L,i)=>{
+  const h=document.createElement("div"); h.className="lane-h";
+  h.style.left=(X0+i*COLW)+"px"; h.style.top="22px"; h.style.color=`var(${L.c})`;
+  h.innerHTML=`<span>${esc(L.name)}</span><small>${esc(L.sub)}</small>`; world.appendChild(h);
+});
+{ const b=document.createElement("div"); b.className="band"; b.style.left=(X0+COLW-14)+"px"; b.style.top=(rowY(0)-16)+"px"; b.style.width=(COLW*4-28)+"px"; b.style.height="124px"; b.innerHTML="<span>Startup · runs once</span>"; world.appendChild(b); }
+
+/* nodes */
+const KTAG={hot:"hot path",branch:"alternate",backend:"backend",startup:"startup"};
+N.forEach(n=>{
+  const el=document.createElement("div");
+  el.className=`node k-${n.k}`; el.dataset.id=n.id; el.tabIndex=0; el.setAttribute("role","button");
+  el.setAttribute("aria-label", `${n.t}: ${n.fn}`);
+  el.style.setProperty("--lc", lcVar(n));
+  const step = hotIndex[n.id] ? `<span class="step">${hotIndex[n.id]}</span>` : `<span class="tag">${KTAG[n.k]}</span>`;
+  el.innerHTML = `<span class="port in"></span><span class="port out"></span>
+    <div class="hd">${step}<span class="tt">${esc(n.t)}</span></div>
+    <div class="bd"><div class="fn">${esc(n.fn)}</div><div class="loc">${n.f?esc(srcLabel(n.f,n.l)):"external"}</div></div>`;
+  el.style.left=n.x+"px"; el.style.top=n.y+"px";
+  world.appendChild(el); n.el=el;
+});
+N.forEach(n=>{ n.h = n.el.offsetHeight || 66; });
+
+/* wires */
+edges.forEach(e=>{
+  const p=document.createElementNS(SVGNS,"path"); p.setAttribute("class",`wire k-${e.k}${e.k==="hot"?" flow":""}`); wiresG.appendChild(p); e.el=p;
+  if(e.k==="hot"){ const g=document.createElementNS(SVGNS,"path"); g.setAttribute("class","glow"); glows.appendChild(g); e.glow=g; }
+  const h=document.createElementNS(SVGNS,"path"); h.setAttribute("class","hit"); hitsG.appendChild(h); e.hit=h; h.__e=e;
+  if(e.label){ const t=document.createElementNS(SVGNS,"text"); t.setAttribute("class",`wlabel k-${e.k}`); t.setAttribute("text-anchor","middle"); t.textContent=e.label; labelsG.appendChild(t); e.lab=t; }
+});
+
+function geom(e){
+  const A=byId[e.a], B=byId[e.b];
+  const sx=A.x+W, sy=A.y+PORTY, tx=B.x, ty=B.y+PORTY;
+  let c1x,c1y,c2x,c2y;
+  if (tx > sx + 30) { const dx=Math.max(55,(tx-sx)*0.45); c1x=sx+dx;c1y=sy;c2x=tx-dx;c2y=ty; }
+  else if (A.col===B.col) { c1x=sx+85;c1y=sy;c2x=tx-85;c2y=ty; }
+  else { const d=Math.hypot(sx-tx,sy-ty); const drop=170+d*0.22; c1x=sx+260;c1y=Math.max(sy,ty)+drop;c2x=tx-260;c2y=Math.max(sy,ty)+drop; }
+  c1x+=e.ox;c1y+=e.oy;c2x+=e.ox;c2y+=e.oy;
+  return {sx,sy,c1x,c1y,c2x,c2y,tx,ty};
+}
+function drawEdge(e){
+  const g=geom(e), d=`M${g.sx},${g.sy} C${g.c1x},${g.c1y} ${g.c2x},${g.c2y} ${g.tx},${g.ty}`;
+  e.el.setAttribute("d",d); e.hit.setAttribute("d",d); if(e.glow) e.glow.setAttribute("d",d);
+  if(e.lab){ const t=.5,m=1-t; const x=m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx, y=m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty; e.lab.setAttribute("x",x); e.lab.setAttribute("y",y-6); }
+  e.mid = bez(g,.5);
+}
+const bez=(g,t)=>{const m=1-t;return{x:m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx,y:m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty}};
+edges.forEach(drawEdge);
+
+/* ---------------- spring physics on hovered cables ---------------- */
+let springing=false;
+function kick(){ if(!springing){ springing=true; requestAnimationFrame(stepSprings); } }
+function stepSprings(){
+  let active=false;
+  for(const e of edges){
+    const fx=(e.tx-e.ox)*0.14, fy=(e.ty-e.oy)*0.14;
+    e.vx=(e.vx+fx)*0.74; e.vy=(e.vy+fy)*0.74; e.ox+=e.vx; e.oy+=e.vy;
+    if(Math.abs(e.vx)+Math.abs(e.vy)+Math.abs(e.tx-e.ox)+Math.abs(e.ty-e.oy)>0.05){ active=true; drawEdge(e); }
+    else if(e.ox!==e.tx||e.oy!==e.ty){ e.ox=e.tx;e.oy=e.ty;e.vx=e.vy=0;drawEdge(e); }
+  }
+  if(active) requestAnimationFrame(stepSprings); else springing=false;
+}
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------------- camera ---------------- */
+const cam={x:0,y:0,k:1};
+function applyCam(){
+  world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
+  const gs=22*cam.k; canvas.style.backgroundSize=`${gs}px ${gs}px`; canvas.style.backgroundPosition=`${cam.x}px ${cam.y}px`;
+  $("#pct").textContent=Math.round(cam.k*100)+"%";
+  labelsG.style.display = cam.k<0.45 ? "none":"";
+  drawMini(); placeCard();
+}
+const clampK=k=>Math.min(2.2,Math.max(0.18,k));
+function zoomAt(px,py,k){ k=clampK(k); const wx=(px-cam.x)/cam.k, wy=(py-cam.y)/cam.k; cam.k=k; cam.x=px-wx*k; cam.y=py-wy*k; applyCam(); }
+let flyRaf=0;
+function flyTo(tx,ty,tk,ms=520){
+  cancelAnimationFrame(flyRaf);
+  if(reduced){ Object.assign(cam,{x:tx,y:ty,k:tk}); applyCam(); return; }
+  const s={...cam}, t0=performance.now();
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+    cam.x=s.x+(tx-s.x)*q; cam.y=s.y+(ty-s.y)*q; cam.k=s.k+(tk-s.k)*q; applyCam(); if(p<1) flyRaf=requestAnimationFrame(f); };
+  flyRaf=requestAnimationFrame(f);
+}
+function viewRect(){ const r=canvas.getBoundingClientRect(); return {w:r.width,h:r.height,l:r.left,t:r.top}; }
+function fitBox(x0,y0,x1,y1,pad=60,maxK=1.1){
+  const v=viewRect(); const bw=x1-x0, bh=y1-y0;
+  const k=clampK(Math.min((v.w-pad*2)/bw,(v.h-pad*2-70)/bh,maxK));
+  flyTo((v.w-bw*k)/2-x0*k, (v.h-70-bh*k)/2-y0*k+10, k);
+}
+function visibleNodes(){ return N.filter(n=>!n.el.hidden); }
+function fitNodes(list,maxK){ if(!list.length) return; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; list.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);}); fitBox(x0,y0-40,x1,y1,50,maxK); }
+function centerOn(n,k){ const v=viewRect(); k=k??Math.max(cam.k,0.85); flyTo(v.w/2-(n.x+W/2)*k, v.h/2-(n.y+n.h/2)*k-30, k); }
+
+/* ---------------- interaction: pan / zoom / drag ---------------- */
+let drag=null; const pointers=new Map(); let pinch=null;
+canvas.addEventListener("pointerdown",ev=>{
+  if(ev.target.closest(".transport,.legend,.mini")) return;
+  pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pointers.size===2){ const [a,b]=[...pointers.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),k:cam.k}; drag=null; return; }
+  const nodeEl=ev.target.closest(".node");
+  if(nodeEl){ const n=byId[nodeEl.dataset.id]; drag={type:"node",n,sx:ev.clientX,sy:ev.clientY,nx:n.x,ny:n.y,moved:false}; }
+  else drag={type:"pan",sx:ev.clientX,sy:ev.clientY,cx:cam.x,cy:cam.y,moved:false,edge:ev.target.__e||null};
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener("pointermove",ev=>{
+  if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pinch && pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); const v=viewRect(); zoomAt((a.x+b.x)/2-v.l,(a.y+b.y)/2-v.t,pinch.k*d/pinch.d); return; }
+  if(!drag) return;
+  const dx=ev.clientX-drag.sx, dy=ev.clientY-drag.sy;
+  if(!drag.moved && Math.hypot(dx,dy)>4){ drag.moved=true; if(drag.type==="pan") canvas.classList.add("panning"); else { drag.n.el.classList.add("dragging"); hideTip(); } }
+  if(!drag.moved) return;
+  if(drag.type==="pan"){ cam.x=drag.cx+dx; cam.y=drag.cy+dy; applyCam(); }
+  else { const n=drag.n; n.x=drag.nx+dx/cam.k; n.y=drag.ny+dy/cam.k; n.el.style.left=n.x+"px"; n.el.style.top=n.y+"px"; [...n.ins,...n.outs].forEach(drawEdge); drawMini(); placeCard(); }
+});
+function endPtr(ev){
+  pointers.delete(ev.pointerId); if(pointers.size<2) pinch=null;
+  if(!drag) return;
+  if(!drag.moved && drag.type==="node") select(drag.n.id,false);
+  else if(!drag.moved && drag.type==="pan" && ev.type==="pointerup") { if(drag.edge) select(drag.edge.b,true); else if(sel) select(null); }
+  if(drag.type==="node") drag.n.el.classList.remove("dragging");
+  canvas.classList.remove("panning"); drag=null;
+}
+canvas.addEventListener("pointerup",endPtr); canvas.addEventListener("pointercancel",endPtr);
+canvas.addEventListener("wheel",ev=>{
+  ev.preventDefault(); const v=viewRect();
+  const wheelLike = ev.deltaMode!==0 || (ev.deltaX===0 && Math.abs(ev.deltaY)>=50);
+  if((ev.ctrlKey||ev.metaKey||wheelLike) && !ev.shiftKey){
+    zoomAt(ev.clientX-v.l, ev.clientY-v.t, cam.k*Math.exp(-ev.deltaY*(ev.ctrlKey?0.012:0.0018)));
+  } else { cam.x-=ev.deltaX; cam.y-=ev.deltaY; applyCam(); }
+},{passive:false});
+$("#btnIn").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k*1.2)};
+$("#btnOut").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k/1.2)};
+$("#btnFit").onclick=()=>fitNodes(visibleNodes(),1);
+$("#btnHot").onclick=()=>fitNodes(N.filter(n=>n.k==="hot"),1);
+
+/* ---------------- hover highlighting + tooltip ---------------- */
+let hoverNode=null;
+function setLit(nodes,edgesLit){
+  N.forEach(n=>n.el.classList.toggle("lit",nodes.has(n.id)));
+  edges.forEach(e=>{ const on=edgesLit.has(e); e.el.classList.toggle("lit",on); e.lab&&e.lab.classList.toggle("lit",on); });
+  const any=nodes.size>0;
+  canvas.classList.toggle("dim-nodes",any); wires.classList.toggle("dim-wires",any);
+}
+function clearLit(){ N.forEach(n=>n.el.classList.remove("lit")); edges.forEach(e=>{e.el.classList.remove("lit");e.lab&&e.lab.classList.remove("lit")}); canvas.classList.remove("dim-nodes"); wires.classList.remove("dim-wires"); }
+function litNode(n){ const ns=new Set([n.id]), es=new Set(); [...n.ins,...n.outs].forEach(e=>{ if(byId[e.a].el.hidden||byId[e.b].el.hidden) return; es.add(e); ns.add(e.a); ns.add(e.b); }); setLit(ns,es); }
+function showTip(html,x,y){ tip.innerHTML=html; tip.hidden=false; const r=tip.getBoundingClientRect(); let L=x+16,T=y+16; if(L+r.width>innerWidth-8) L=x-r.width-12; if(T+r.height>innerHeight-8) T=y-r.height-12; tip.style.left=L+"px"; tip.style.top=T+"px"; }
+function hideTip(){ tip.hidden=true; }
+world.addEventListener("pointerover",ev=>{
+  const el=ev.target.closest(".node"); if(!el||drag?.moved) return;
+  const n=byId[el.dataset.id]; hoverNode=n; litNode(n);
+  // nudge connected cables outward a touch
+  [...n.ins,...n.outs].forEach(e=>{ e.ty = e.b===n.id ? -6 : 6; }); if(!reduced) kick();
+});
+world.addEventListener("pointermove",ev=>{ const el=ev.target.closest(".node"); if(el && !drag?.moved && ev.pointerType==="mouse"){ const n=byId[el.dataset.id]; showTip(`<b>${esc(n.t)}</b>${esc(n.n)}${n.ex?`<span class="ex"><i>E.G.</i>${n.ex}</span>`:""}<span class="hint">${n.f?esc(srcLabel(n.f,n.l))+" · ":""}${hotIndex[n.id]?`step ${hotIndex[n.id]} · `:""}click for details</span>`,ev.clientX,ev.clientY); } });
+world.addEventListener("pointerout",ev=>{
+  const el=ev.target.closest(".node"); if(!el) return; if(ev.relatedTarget && el.contains(ev.relatedTarget)) return;
+  const n=byId[el.dataset.id]; [...n.ins,...n.outs].forEach(e=>{e.tx=0;e.ty=0;}); kick();
+  hoverNode=null; hideTip(); restoreLit();
+});
+hitsG.addEventListener("pointerover",ev=>{ const e=ev.target.__e; if(!e) return; setLit(new Set([e.a,e.b]),new Set([e])); });
+hitsG.addEventListener("pointermove",ev=>{
+  const e=ev.target.__e; if(!e||drag) return; const v=viewRect();
+  const wx=(ev.clientX-v.l-cam.x)/cam.k, wy=(ev.clientY-v.t-cam.y)/cam.k;
+  const dx=wx-e.mid.x, dy=wy-e.mid.y, L=Math.hypot(dx,dy)||1, m=Math.min(46,L*0.5);
+  e.tx=dx/L*m; e.ty=dy/L*m; if(!reduced) kick();
+  const A=byId[e.a],B=byId[e.b];
+  if(ev.pointerType==="mouse") showTip(`<b>${esc(A.t)} → ${esc(B.t)}</b>${e.label?esc(e.label)+"<br>":""}<code>${esc({hot:"hot path",loop:"per-token loop",branch:"alternate route",backend:"backend alternative",startup:"startup"}[e.k])}</code>`,ev.clientX,ev.clientY);
+});
+hitsG.addEventListener("pointerout",ev=>{ const e=ev.target.__e; if(!e) return; e.tx=0;e.ty=0;kick(); hideTip(); restoreLit(); });
+function restoreLit(){ if(sel) litNode(byId[sel]); else clearLit(); }
+
+/* ---------------- filters + search ---------------- */
+const KINDS=[{k:"hot",label:"Hot path",col:"var(--hot)"},{k:"branch",label:"Alternates",col:"#8a95a5"},{k:"backend",label:"Other backends",col:"var(--c-ggml)"},{k:"startup",label:"Startup",col:"var(--startup)"}];
+const shown=new Set(KINDS.map(x=>x.k));
+const chips=$("#chips");
+KINDS.forEach(K=>{
+  const b=document.createElement("button"); b.className="chip"; b.setAttribute("aria-pressed","true");
+  b.innerHTML=`<i style="background:${K.col}"></i>${K.label}<span class="n">${N.filter(n=>n.k===K.k).length}</span>`;
+  b.onclick=()=>{ shown.has(K.k)?shown.delete(K.k):shown.add(K.k); b.setAttribute("aria-pressed",shown.has(K.k)); applyFilters(); };
+  chips.appendChild(b);
+});
+function applyFilters(){
+  N.forEach(n=>n.el.hidden=!shown.has(n.k));
+  edges.forEach(e=>{ const h=byId[e.a].el.hidden||byId[e.b].el.hidden; e.el.style.display=e.hit.style.display=h?"none":""; if(e.glow) e.glow.style.display=h?"none":""; if(e.lab) e.lab.style.display=h?"none":""; });
+  document.querySelectorAll(".band").forEach(b=>b.hidden=!shown.has("startup"));
+  drawMini();
+}
+const q=$("#q"), qcount=$("#qcount");
+let hits=[];
+q.addEventListener("input",()=>{
+  const s=q.value.trim().toLowerCase();
+  N.forEach(n=>n.el.classList.remove("hit"));
+  if(!s){ canvas.classList.remove("searching"); qcount.textContent=""; hits=[]; return; }
+  hits=N.filter(n=>[n.t,n.fn,n.n,n.d,n.f?F[n.f]||"":"",...(n.c||[]).map(c=>c[0])].join(" ").toLowerCase().includes(s));
+  hits.forEach(n=>n.el.classList.add("hit")); canvas.classList.add("searching");
+  qcount.textContent=hits.length?`${hits.length}`:"none";
+});
+let hitCursor=0;
+q.addEventListener("keydown",ev=>{
+  if(ev.key==="Enter"&&hits.length){ const n=hits[hitCursor++%hits.length]; if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); } select(n.id,true); }
+  if(ev.key==="Escape"){ q.value=""; q.dispatchEvent(new Event("input")); q.blur(); }
+});
+function syncChips(){ [...chips.children].forEach((b,i)=>b.setAttribute("aria-pressed",shown.has(KINDS[i].k))); }
+
+/* ---------------- inspector ---------------- */
+let sel=null;
+function select(id,fly){
+  if(sel) byId[sel].el.classList.remove("sel");
+  if(ti>=0 && (!id || stepInfo(ti).id!==id)){ setPlaying(false); ti=-1; clearTrace(); tStep.textContent="TRACE A REQUEST"; tName.textContent="Press ▶ to follow one chat request end to end"; tProg.style.width="0"; tPlay.textContent="▶ Trace"; }
+  sel=id;
+  if(!id){ clearLit(); renderEmpty(); card.hidden=true; return; }
+  const n=byId[id]; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n);
+  cardOff=false; renderCard();
+  if(fly) centerOn(n);
+  if(innerWidth>860 || !hotIndex[id]) insp.classList.remove("closed");
+}
+function jumpBtn(id,via){
+  const n=byId[id]; const hot=n.k==="hot";
+  return `<button class="jump${hot?" hot":""}" data-jump="${id}" style="--lc:${lcVar(n)}"><i></i>${esc(n.t)}${via?` <em>${esc(via)}</em>`:""}</button>`;
+}
+function renderInspector(n, narration){
+  const L=laneOf(n);
+  const hi=hotIndex[n.id];
+  const prev=hi>1?HOTSEQ[hi-2]:null, next=hi&&hi<HOTSEQ.length?HOTSEQ[hi]:null;
+  const ins=n.ins.map(e=>jumpBtn(e.a, e.k==="loop"?"loop":e.k!=="hot"?KTAG[byId[e.a].k]:"")).join("");
+  const outs=n.outs.map(e=>jumpBtn(e.b, e.k==="loop"?"loop":e.k!=="hot"?KTAG[byId[e.b].k]:"")).join("");
+  insp.style.setProperty("--lc",lcVar(n));
+  insp.innerHTML=`
+    <button class="ibtn closeinsp" data-close aria-label="Close inspector">✕</button>
+    ${narration?`<div class="narr"><span class="k">${esc(narration.k)}</span><p>${esc(narration.text)}</p></div>`:""}
+    <div>
+      <div class="eyebrow"><i></i>${esc(L.name)} · ${hi?`hot path step ${hi} of ${HOTSEQ.length}`:esc(KTAG[n.k])}</div>
+      <h2 style="margin-top:6px">${esc(n.t)}</h2>
+      <div class="fnline">${esc(n.fn)}</div>
+      ${n.f?`<a class="src" href="${srcURL(n.f,n.l)}" target="_blank" rel="noopener">${esc(srcLabel(n.f,n.l))} ↗</a>`:""}
+    </div>
+    ${hi?`<div class="navrow"><button class="ibtn" data-step="${hi-2}" ${prev?"":"disabled"}>◀ Prev</button><button class="ibtn primary" data-step="${hi}" ${next?"":"disabled"}>Next: ${next?esc(byId[next].t):"end"} ▶</button></div>`:""}
+    <p>${esc(n.d)}</p>
+    ${n.ex?`<div class="sec"><h3>Example / tip</h3><p style="font-size:13px">${n.ex}</p></div>`:""}
+    ${n.p?`<div class="sec"><h3>On this request</h3><pre class="payload">${n.p}</pre></div>`:""}
+    ${n.c&&n.c.length?`<div class="sec"><h3>Key calls</h3><ul class="calls">${n.c.map(([lab,f,l])=>`<li><span>${esc(lab)}</span><a href="${srcURL(f,l)}" target="_blank" rel="noopener">${esc((F[f]||"").split("/").pop())}:${l}</a></li>`).join("")}</ul></div>`:""}
+    ${ins?`<div class="sec"><h3>Comes from</h3><div class="jumps">${ins}</div></div>`:""}
+    ${outs?`<div class="sec"><h3>Goes to</h3><div class="jumps">${outs}</div></div>`:""}
+  `;
+}
+function renderEmpty(){
+  insp.style.removeProperty("--lc");
+  insp.innerHTML=`<div class="empty">
+    <div class="eyebrow">llama-server · ${N.length} nodes · ${edges.length} connections</div>
+    <h2>Follow one chat request through llama.cpp</h2>
+    <p>The amber cables are the path a streaming <code style="font-family:var(--mono);font-size:12px">/v1/chat/completions</code> request takes on a GPU build, from the HTTP thread through the slot scheduler, libllama, ggml and back out as server-sent events. The purple cable is the per-token loop.</p>
+    <ol>
+      <li>Press <b>▶ Trace</b> below, or step with <span class="kbd">←</span> <span class="kbd">→</span>. A popup beside each step has <b>Next</b> and <b>Prev</b>.</li>
+      <li>Click any node for what it does, sample data at that point, and links to the exact source lines.</li>
+      <li>Hover cables and nodes to see connections. Drag nodes to untangle, drag the background to pan, scroll or pinch to zoom.</li>
+    </ol>
+    <div class="sec"><h3>Start here</h3><div class="jumps">${["client","upd","pub","sample","reader"].map(id=>jumpBtn(id)).join("")}</div></div>
+    <p style="font-size:12px;color:var(--fg-3)">Source lines are pinned to commit 2ca15f5 (Oct 4 2026). Token ids and probabilities in the samples are illustrative.</p>
+  </div>`;
+}
+insp.addEventListener("click",ev=>{
+  const st=ev.target.closest("[data-step]"); if(st&&!st.disabled){ setPlaying(false); gotoStep(traceIndexFor(+st.dataset.step)); return; }
+  const j=ev.target.closest("[data-jump]"); if(j&&j.dataset.jump){ const n=byId[j.dataset.jump]; if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); } select(j.dataset.jump,true); return; }
+  if(ev.target.closest("[data-close]")){ insp.classList.add("closed"); }
+});
+
+/* ---------------- trace ---------------- */
+let ti=-1, playing=false, playTimer=0;
+const tProg=$("#tProg"), tStep=$("#tStep"), tName=$("#tName"), tPlay=$("#tPlay");
+function stepInfo(i){ const s=TRACE[i]; return Array.isArray(s)?{id:s[0],say:s[1]}:{id:s,say:null}; }
+function clearTrace(){ N.forEach(n=>n.el.classList.remove("cur","visited")); edges.forEach(e=>e.el.classList.remove("trav")); packet.setAttribute("cx",-100); packet.setAttribute("cy",-100); }
+function gotoStep(i){
+  i=Math.max(0,Math.min(TRACE.length-1,i)); const prevI=ti; ti=i;
+  clearTrace();
+  ["hot"].forEach(k=>{ if(!shown.has(k)){ shown.add(k); syncChips(); applyFilters(); } });
+  for(let j=0;j<=i;j++){ const {id}=stepInfo(j); byId[id].el.classList.add("visited"); if(j>0){ const e=edgeByKey[stepInfo(j-1).id+">"+id]; if(e) e.el.classList.add("trav"); } }
+  const {id,say}=stepInfo(i), n=byId[id]; n.el.classList.add("cur");
+  if(n.el.hidden){ shown.add(n.k); syncChips(); applyFilters(); }
+  const loopPhase = i>=HOTSEQ.length;
+  tStep.textContent = loopPhase ? `STEP ${i+1}/${TRACE.length} · GENERATION LOOP` : `STEP ${i+1}/${TRACE.length} · FIRST TOKEN`;
+  tName.textContent = n.t+" — "+n.fn;
+  tProg.style.width=((i+1)/TRACE.length*100)+"%";
+  if(sel) byId[sel].el.classList.remove("sel"); sel=id; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n, {k: loopPhase?`TRACE · LOOP STEP ${i+1}`:`TRACE · STEP ${i+1}`, text: say || n.n});
+  if(innerWidth>860) insp.classList.remove("closed");
+  cardOff=false; renderCard();
+  if($("#tFollow").checked) centerOn(n, Math.max(cam.k, 0.8));
+  // packet along the edge we just traversed
+  if(prevI>=0 && Math.abs(i-prevI)===1){
+    const a=stepInfo(Math.min(i,prevI)).id, b=stepInfo(Math.max(i,prevI)).id, e=edgeByKey[a+">"+b];
+    if(e && !reduced) animatePacket(e, i<prevI);
+  }
+}
+let pktRaf=0;
+function animatePacket(e,rev){
+  cancelAnimationFrame(pktRaf); const L=e.el.getTotalLength(), t0=performance.now(), ms=Math.min(900,280+L*0.35);
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=rev?1-p:p, pt=e.el.getPointAtLength(L*q); packet.setAttribute("cx",pt.x); packet.setAttribute("cy",pt.y); if(p<1) pktRaf=requestAnimationFrame(f); else { packet.setAttribute("cx",-100); packet.setAttribute("cy",-100);} };
+  pktRaf=requestAnimationFrame(f);
+}
+function setPlaying(p){ playing=p; tPlay.textContent=p?"❚❚ Pause":(ti>=0?"▶ Play":"▶ Trace"); clearTimeout(playTimer); if(p) playTimer=setTimeout(tick,2300); }
+function tick(){ if(!playing) return; if(ti>=TRACE.length-1){ setPlaying(false); return; } gotoStep(ti+1); if(ti>=TRACE.length-1){ setPlaying(false); return; } playTimer=setTimeout(tick, 2300); }
+tPlay.onclick=()=>{ if(playing){ setPlaying(false); return; } gotoStep(ti<0||ti>=TRACE.length-1 ? 0 : ti+1); setPlaying(true); };
+$("#tNext").onclick=()=>{ setPlaying(false); gotoStep(ti+1); };
+$("#tPrev").onclick=()=>{ setPlaying(false); gotoStep(ti<0?0:ti-1); };
+$("#tFirst").onclick=()=>{ setPlaying(false); gotoStep(0); };
+document.addEventListener("keydown",ev=>{
+  if(ev.target.matches("input,textarea")) { return; }
+  if(ev.key==="ArrowRight"){ ev.preventDefault(); setPlaying(false); gotoStep(ti+1); }
+  else if(ev.key==="ArrowLeft"){ ev.preventDefault(); setPlaying(false); gotoStep(ti<0?0:ti-1); }
+  else if(ev.key===" " && !ev.target.closest("button")){ ev.preventDefault(); tPlay.click(); }
+  else if(ev.key==="f"||ev.key==="F"){ fitNodes(visibleNodes(),1); }
+  else if(ev.key==="/"){ ev.preventDefault(); q.focus(); }
+  else if(ev.key==="Escape"){ setPlaying(false); card.hidden=true; select(null); clearTrace(); ti=-1; tStep.textContent="TRACE A REQUEST"; tName.textContent="Press ▶ to follow one chat request end to end"; tProg.style.width="0"; tPlay.textContent="▶ Trace"; }
+  else if(ev.key==="Enter" && ev.target.classList.contains("node")){ select(ev.target.dataset.id,true); }
+});
+
+/* ---------------- step card (popup next to the node) ---------------- */
+const card=$("#card"); let cardOff=false;
+// map a hot-path index (0-based) to the first trace step for it
+function traceIndexFor(hotIdx){ hotIdx=Math.max(0,Math.min(HOTSEQ.length-1,hotIdx)); return hotIdx; }
+function cardModel(){
+  if(cardOff||!sel) return null;
+  const n=byId[sel];
+  if(ti>=0 && stepInfo(ti).id===sel){
+    const {say}=stepInfo(ti); const loop=ti>=HOTSEQ.length;
+    return {n, label:`STEP ${ti+1} / ${TRACE.length}${loop?" · GENERATION LOOP":""}`, text:say||n.n,
+      prev: ti>0 ? ()=>gotoStep(ti-1) : null, next: ti<TRACE.length-1 ? ()=>gotoStep(ti+1) : null,
+      nextLabel: ti<TRACE.length-1 ? byId[stepInfo(ti+1).id].t : null};
+  }
+  const hi=hotIndex[sel]; if(!hi) return null;
+  return {n, label:`HOT PATH STEP ${hi} / ${HOTSEQ.length}`, text:n.n,
+    prev: hi>1 ? ()=>gotoStep(hi-2) : null, next: ()=>gotoStep(Math.min(hi, TRACE.length-1)),
+    nextLabel: hi<HOTSEQ.length ? byId[HOTSEQ[hi]].t : byId[stepInfo(HOTSEQ.length).id].t};
+}
+let cardNav={};
+function renderCard(){
+  const m=cardModel(); if(!m){ card.hidden=true; return; }
+  cardNav=m;
+  card.innerHTML=`<div class="top"><small>${esc(m.label)}</small><button class="x" data-card="close" aria-label="Hide step popup" title="Hide (shows again on next step)">✕</button></div>
+    <div><h4>${esc(m.n.t)}</h4><div class="fnc">${esc(m.n.fn)}</div></div>
+    <p>${esc(m.text)}</p>
+    ${m.n.ex?`<div class="ex"><b>E.G.</b>${m.n.ex}</div>`:""}
+    <div class="row"><button class="ibtn" data-card="prev" ${m.prev?"":"disabled"} aria-label="Previous step">◀</button>
+      <button class="ibtn primary grow" data-card="next" ${m.next?"":"disabled"}>${m.next?`Next: ${esc(m.nextLabel)} ▶`:"End of trace"}</button></div>
+    <button class="more" data-card="more">Full details, sample data and source links →</button>`;
+  card.hidden=false; placeCard();
+}
+function placeCard(){
+  if(card.hidden||!sel) return;
+  const n=byId[sel], v=viewRect(), cw=card.offsetWidth, ch=card.offsetHeight;
+  card.classList.remove("right","below","docked");
+  if(innerWidth<=860){ card.classList.add("docked"); return; }
+  const nx=cam.x+n.x*cam.k, ny=cam.y+n.y*cam.k, nw=W*cam.k, nh=n.h*cam.k;
+  let x=nx+nw+14, y=ny-4;
+  if(x+cw>v.w-12){ x=nx-cw-14; card.classList.add("right"); }
+  if(x<12){ x=Math.min(Math.max(12,nx),v.w-cw-12); y=ny+nh+12; card.classList.add("below"); card.classList.remove("right"); }
+  y=Math.max(12,Math.min(y,v.h-ch-86));
+  card.style.left=x+"px"; card.style.top=y+"px";
+}
+card.addEventListener("pointerdown",ev=>ev.stopPropagation());
+card.addEventListener("wheel",ev=>ev.stopPropagation());
+card.addEventListener("click",ev=>{
+  const b=ev.target.closest("[data-card]"); if(!b||b.disabled) return;
+  const a=b.dataset.card;
+  if(a==="close"){ cardOff=true; card.hidden=true; }
+  else if(a==="prev"&&cardNav.prev){ setPlaying(false); cardNav.prev(); }
+  else if(a==="next"&&cardNav.next){ setPlaying(false); cardNav.next(); }
+  else if(a==="more"){ insp.classList.remove("closed"); insp.scrollTop=0; insp.animate?.([{boxShadow:"inset 0 0 0 2px var(--hot)"},{boxShadow:"inset 0 0 0 0 transparent"}],{duration:900}); }
+});
+
+/* ---------------- minimap ---------------- */
+const mini=$("#mini"); let mb=null; const laneColor={}; LANES.forEach(L=>laneColor[L.c]=getComputedStyle(document.documentElement).getPropertyValue(L.c).trim());
+function drawMini(){
+  if(!mini.getBoundingClientRect().width) return;
+  const vis=visibleNodes(); if(!vis.length){ mini.innerHTML=""; return; }
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; N.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);});
+  const pad=8, s=Math.min((190-pad*2)/(x1-x0),(104-pad*2)/(y1-y0)); mb={x0,y0,s,pad};
+  const v=viewRect();
+  const vx=(-cam.x/cam.k-x0)*s+pad, vy=(-cam.y/cam.k-y0)*s+pad, vw=v.w/cam.k*s, vh=v.h/cam.k*s;
+  mini.innerHTML = vis.map(n=>`<rect x="${(n.x-x0)*s+pad}" y="${(n.y-y0)*s+pad}" width="${W*s}" height="${Math.max(2,n.h*s)}" rx="1" fill="${n.k==="hot"?"#ffb547":laneColor[laneOf(n).c]}" opacity="${n.k==="hot"?.85:.45}"/>`).join("")
+    + `<rect class="v" x="${vx}" y="${vy}" width="${vw}" height="${vh}" rx="2"/>`;
+}
+mini.addEventListener("pointerdown",ev=>{
+  ev.stopPropagation(); if(!mb) return; const r=mini.getBoundingClientRect(), v=viewRect();
+  const wx=(ev.clientX-r.left-mb.pad)/mb.s+mb.x0, wy=(ev.clientY-r.top-mb.pad)/mb.s+mb.y0;
+  flyTo(v.w/2-wx*cam.k, v.h/2-wy*cam.k, cam.k, 300);
+});
+
+/* ---------------- boot ---------------- */
+function sizeWires(){ let x1=0,y1=0; N.forEach(n=>{x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h)}); wires.setAttribute("width",x1+400); wires.setAttribute("height",y1+800); }
+sizeWires(); renderEmpty();
+requestAnimationFrame(()=>{ fitNodes(N.filter(n=>n.col<=3 && n.row<=6),0.95); });
+addEventListener("resize",()=>drawMini());
+if(innerWidth<=860) insp.classList.add("closed");
+</script>
+</body>
+</html>

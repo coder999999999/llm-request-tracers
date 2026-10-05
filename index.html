@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Request Tracers</title>
+<meta name="description" content="Learning notes: interactive maps of one streaming chat request moving through llama.cpp and vLLM, pinned to the source.">
+<meta property="og:title" content="Request Tracers">
+<meta property="og:description" content="Learning notes: interactive maps of one streaming chat request moving through llama.cpp and vLLM, pinned to the source.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: one left-aligned reading column (max 1120px) on the same dark workbench as the tracers.
+   The amber packet riding the two route strips is the page's one moment of motion. Dark-only, to match the tools it links to. */
+:root{
+  color-scheme: dark;
+  --bg:#0a0d11; --raise:#10141a; --raise-2:#161b22; --line:#222a33; --line-2:#2f3843;
+  --fg:#dfe5ee; --fg-2:#a6b0be; --fg-3:#7a8597;
+  --hot:#ffb547; --hot-ink:#1a1206; --loop:#b993ff; --link:#9cc1ff;
+  --display:"IBM Plex Sans Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 var(--body);-webkit-font-smoothing:antialiased}
+a{color:var(--link);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--hot);outline-offset:3px;border-radius:4px}
+code{font:0.88em var(--mono);color:var(--fg)}
+h1,h2,h3{font-family:var(--display);font-weight:600;text-wrap:balance;margin:0;letter-spacing:.005em}
+
+.wrap{max-width:1120px;margin:0 auto;padding-inline:24px}
+@media (max-width:560px){.wrap{padding-inline:16px}}
+
+/* top line */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:20px;border-bottom:1px solid var(--line)}
+.mark{display:flex;align-items:center;gap:10px;color:var(--fg);text-decoration:none;font:600 15px var(--display);letter-spacing:.02em}
+.mark svg{flex:none}
+.top small{font:12px var(--mono);color:var(--fg-3)}
+
+/* hero */
+.hero{padding-block:64px 40px;display:grid;gap:20px;max-width:760px}
+.req{font:500 13px var(--mono);color:var(--hot);display:flex;flex-wrap:wrap;gap:6px 14px}
+.req span{color:var(--fg-3)}
+.hero h1{font-size:46px;line-height:1.05}
+.lede{font-size:18px;color:var(--fg);max-width:64ch;margin:0}
+.caveat{font-size:15px;color:var(--fg-2);max-width:64ch;margin:0;padding-left:14px;border-left:2px solid var(--line-2)}
+@media (max-width:560px){.hero{padding-block:40px 28px}.hero h1{font-size:33px}.lede{font-size:17px}}
+
+/* section heads */
+.sec{padding-block:40px}
+.sec-h{display:grid;gap:6px;margin-bottom:24px;max-width:70ch}
+.sec-h h2{font-size:28px;line-height:1.15}
+.sec-h p{margin:0;color:var(--fg-2)}
+.eyebrow{font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+
+/* tracer cards */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+@media (max-width:980px){.cards{grid-template-columns:minmax(0,1fr)}}
+.card{display:grid;grid-template-rows:auto 1fr;background:var(--raise);border:1px solid var(--line);border-radius:10px;overflow:hidden;color:inherit;text-decoration:none;transition:border-color .2s,transform .2s}
+.card:hover{border-color:color-mix(in srgb,var(--hot) 55%,var(--line))}
+.card:hover .go{color:var(--hot)}
+.card:hover .go svg{transform:translateX(3px)}
+.shot{display:block;width:100%;height:auto;aspect-ratio:16/10;max-width:100%;border-bottom:1px solid var(--line);background:var(--raise-2)}
+.card-b{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;padding:18px 20px 20px}
+.kick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:500 11.5px var(--mono);color:var(--fg-3);letter-spacing:.04em}
+.tag{font:600 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--hot-ink);background:var(--hot);border-radius:4px;padding:2px 6px}
+.card h3{font-size:22px;line-height:1.2}
+.card p{margin:0;font-size:15px;color:var(--fg-2)}
+.meta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-top:12px;border-top:1px solid var(--line);font:12px var(--mono);color:var(--fg-3);font-variant-numeric:tabular-nums}
+.go{display:inline-flex;align-items:center;gap:6px;font:600 14px var(--display);color:var(--fg);letter-spacing:.02em;transition:color .2s}
+.go svg{transition:transform .2s}
+@media (prefers-reduced-motion:reduce){.card,.go svg{transition:none}.card:hover .go svg{transform:none}}
+
+/* route strips */
+.routes{display:grid;gap:28px}
+.route{margin:0;display:grid;gap:12px}
+.route figcaption{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.route figcaption b{font:600 18px var(--display)}
+.route figcaption span{font:12.5px var(--mono);color:var(--fg-3)}
+.scroll{overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch}
+.track{position:relative;display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));column-gap:3px;row-gap:12px;min-width:920px;margin:0;padding:30px 0 0;list-style:none}
+.lane{position:relative;border-top:3px solid var(--c);padding:9px 8px 0 0;min-width:0}
+.lane b{display:block;font:600 13.5px/1.2 var(--display);color:var(--fg)}
+.lane small{display:block;margin-top:3px;font:10.5px/1.35 var(--mono);color:var(--fg-3);overflow-wrap:break-word}
+.dense .lane{padding-right:5px}
+.dense .lane b{font-size:12px}
+.dense .lane[data-cross]{margin-left:8px}
+.dense .lane[data-cross]::before,.dense .lane[data-cross]::after{left:-6px}
+.dense .lane small{font-size:9.5px;letter-spacing:-.01em}
+.lane[data-cross]{margin-left:12px}
+.lane[data-cross]::before{content:"";position:absolute;left:-8px;top:-24px;bottom:-4px;border-left:1px dashed var(--fg-3)}
+.lane[data-cross]::after{content:attr(data-cross);position:absolute;left:-8px;top:-30px;transform:translateX(-50%);font:500 10px var(--mono);color:var(--fg-2);background:var(--bg);padding:0 5px;white-space:nowrap}
+.loop{grid-row:2;height:12px;border:1.5px dashed var(--loop);border-top:0;border-radius:0 0 7px 7px;position:relative}
+.loop span{position:absolute;left:50%;top:14px;transform:translateX(-50%);font:500 11px var(--mono);color:var(--loop);white-space:nowrap}
+.track{padding-bottom:22px}
+.packet{position:absolute;top:28px;left:0;width:9px;height:9px;margin-left:-4px;border-radius:50%;background:var(--hot);box-shadow:0 0 0 3px color-mix(in srgb,var(--hot) 25%,transparent),0 0 14px var(--hot);animation:ride 11s linear infinite}
+@keyframes ride{0%{left:0;opacity:0}3%{opacity:1}96%{opacity:1}100%{left:100%;opacity:0}}
+@media (prefers-reduced-motion:reduce){.packet{display:none}}
+.scroll-hint{display:none;font:11px var(--mono);color:var(--fg-3)}
+@media (max-width:980px){.scroll-hint{display:block}}
+
+/* comparison */
+.cmp-wrap{margin-top:36px}
+.cmp{width:100%;border-collapse:collapse;font-size:15px}
+.cmp th,.cmp td{text-align:left;vertical-align:top;padding:14px 16px 14px 0;border-top:1px solid var(--line)}
+.cmp thead th{border-top:0;padding-top:0;font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.cmp tbody th{width:17%;font:600 15px/1.35 var(--display);color:var(--fg);letter-spacing:.01em}
+.cmp td{width:41.5%;color:var(--fg-2)}
+.cmp td code{color:var(--fg)}
+.foot-note{margin:14px 0 0;font-size:13px;color:var(--fg-3)}
+@media (max-width:760px){
+  .cmp thead{display:none}
+  .cmp,.cmp tbody,.cmp tr,.cmp th,.cmp td{display:block;width:auto}
+  .cmp tr{border-top:1px solid var(--line);padding-block:14px}
+  .cmp th,.cmp td{border:0;padding:0}
+  .cmp tbody th{width:auto;margin-bottom:8px}
+  .cmp td+td{margin-top:10px}
+  .cmp td::before{content:attr(data-k);display:block;font:500 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fg-3);margin-bottom:2px}
+}
+
+/* notes */
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px 40px;border-top:1px solid var(--line);padding-top:32px}
+@media (max-width:860px){.notes{grid-template-columns:minmax(0,1fr)}}
+.note{display:grid;gap:10px;align-content:start;min-width:0}
+.note h3{font-size:19px}
+.note p,.note li{margin:0;font-size:15px;color:var(--fg-2)}
+.note ul,.note ol{margin:0;padding-left:18px;display:grid;gap:6px}
+kbd{font:500 12px var(--mono);color:var(--fg);background:var(--raise-2);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:0 5px}
+
+footer{margin-top:40px;padding-block:24px 48px;border-top:1px solid var(--line);font-size:13px;color:var(--fg-3);display:grid;gap:6px}
+footer p{margin:0;max-width:80ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="mark" href="index.html" aria-label="Request Tracers home">
+    <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="6" width="10" height="7" rx="1.5" fill="none" stroke="#a6b0be" stroke-width="1.8"/><rect x="18" y="19" width="10" height="7" rx="1.5" fill="none" stroke="#a6b0be" stroke-width="1.8"/><path d="M14 9.5c6 0 0 13 4 13" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="round"/><circle cx="14" cy="9.5" r="2.2" fill="#ffb547"/></svg>
+    Request Tracers
+  </a>
+  <small>learning notes · Oct 2026</small>
+</header>
+
+<section class="hero">
+  <div class="req">POST /v1/chat/completions <span>·</span> "stream": true</div>
+  <h1>Following one chat request through an LLM server</h1>
+  <p class="lede">I wanted to understand what happens between a chat request arriving and the tokens streaming back. So I picked two open-source inference servers, llama.cpp and vLLM, read the code along one request's path, and turned my notes into maps you can step through.</p>
+  <p class="caveat">I'm learning this as I go. These maps simplify a lot, each one is pinned to a single commit, and some of it is probably wrong. If you know these codebases, corrections are very welcome.</p>
+</section>
+
+<section class="sec" aria-labelledby="h-tracers">
+  <div class="sec-h">
+    <span class="eyebrow" id="h-tracers">The maps</span>
+    <h2>Pick one and press Trace</h2>
+  </div>
+  <div class="cards">
+    <a class="card" href="llama-cpp.html">
+      <img class="shot" src="assets/preview-llama-cpp.webp" width="960" height="600" alt="The llama.cpp tracer paused on step 13, Pick a slot, with its popup and the inspector open">
+      <div class="card-b">
+        <div class="kick"><span class="tag">Start here</span>llama.cpp · C++</div>
+        <h3>llama.cpp request tracer</h3>
+        <p>One streaming chat request through <code>llama-server</code>. An HTTP thread builds the task, a single inference thread batches it into a decode step, ggml runs the graph on the GPU, and tokens flow back as server-sent events.</p>
+        <div class="meta"><span>53 steps · 60 nodes · @2ca15f5</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      </div>
+    </a>
+    <a class="card" href="vllm.html">
+      <img class="shot" src="assets/preview-vllm.webp" width="960" height="600" alt="The vLLM tracer paused on step 18, Schedule, in the scheduler and KV cache lane">
+      <div class="card-b">
+        <div class="kick">vLLM · Python</div>
+        <h3>vLLM request tracer</h3>
+        <p>The same request through <code>vllm serve</code>. It crosses over ZMQ into the EngineCore process for scheduling, paged KV cache, the GPU forward pass and sampling, then crosses back to be detokenized and streamed. Has a speed control.</p>
+        <div class="meta"><span>59 steps · 69 nodes · @1388100</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      </div>
+    </a>
+    <a class="card" href="vllm-module-graph.html">
+      <img class="shot" src="assets/preview-vllm-module-graph.webp" width="960" height="600" alt="The vLLM module graph with the request trace drawn across its modules">
+      <div class="card-b">
+        <div class="kick">vLLM · Python · zoomed out</div>
+        <h3>vLLM module graph</h3>
+        <p>A wider view: how vLLM's Python modules import each other, with the same request traced across them in 18 steps. Useful for seeing where the request path sits in the whole codebase.</p>
+        <div class="meta"><span>18 steps · 164 modules · @7867d6c</span><span class="go">Open <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3l5 5-5 5M13.5 8H2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      </div>
+    </a>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="h-routes">
+  <div class="sec-h">
+    <span class="eyebrow" id="h-routes">Same request, two designs</span>
+    <h2>Where the request goes</h2>
+    <p>These are the lanes from each tracer, left to right. Dashed lines are where the request is handed to another thread or process. The purple bracket is the part that runs again for every output token.</p>
+  </div>
+
+  <div class="routes">
+    <figure class="route">
+      <figcaption><b>llama.cpp</b><span>llama-server · one process · HTTP threads plus one inference thread</span></figcaption>
+      <div class="scroll">
+        <ol class="track" style="--n:11">
+          <li class="lane" style="--c:#8b96a8"><b>Client</b><small>caller</small></li>
+          <li class="lane" style="--c:#4cb6ac"><b>HTTP</b><small>cpp-httplib threads</small></li>
+          <li class="lane" style="--c:#64a0f2"><b>Route &amp; parse</b><small>HTTP thread</small></li>
+          <li class="lane" style="--c:#9286ee"><b>Task build</b><small>HTTP thread</small></li>
+          <li class="lane" style="--c:#cf86da" data-cross="queue_tasks"><b>Slot scheduler</b><small>inference thread</small></li>
+          <li class="lane" style="--c:#f08a5d"><b>libllama decode</b><small>src/</small></li>
+          <li class="lane" style="--c:#9cc65b"><b>Graph build</b><small>src/models</small></li>
+          <li class="lane" style="--c:#58c6df"><b>ggml backends</b><small>ggml/src</small></li>
+          <li class="lane" style="--c:#f17a96"><b>Sampling</b><small>inference thread</small></li>
+          <li class="lane" style="--c:#59cc9c" data-cross="queue_results"><b>Response</b><small>back to HTTP thread</small></li>
+          <li class="lane" style="--c:#8b96a8"><b>Client</b><small>SSE consumer</small></li>
+          <li class="loop" style="grid-column:5 / 10" aria-label="Slot scheduler through Sampling repeats per token"><span>repeats per token</span></li>
+          <li class="packet" aria-hidden="true"></li>
+        </ol>
+      </div>
+    </figure>
+
+    <figure class="route">
+      <figcaption><b>vLLM</b><span>vllm serve · two processes · API process and EngineCore, talking over ZMQ</span></figcaption>
+      <div class="scroll">
+        <ol class="track dense" style="--n:14">
+          <li class="lane" style="--c:#8b96a8"><b>Client</b><small>caller</small></li>
+          <li class="lane" style="--c:#4cb6ac"><b>API server</b><small>uvicorn</small></li>
+          <li class="lane" style="--c:#64a0f2"><b>Serve &amp; render</b><small>API process</small></li>
+          <li class="lane" style="--c:#7f8cf2"><b>Request build</b><small>API process</small></li>
+          <li class="lane" style="--c:#a28af0"><b>Engine client</b><small>AsyncLLM</small></li>
+          <li class="lane" style="--c:#cf86da" data-cross="ZMQ"><b>Engine core</b><small>EngineCore</small></li>
+          <li class="lane" style="--c:#f08a5d"><b>Scheduler &amp; KV</b><small>EngineCore</small></li>
+          <li class="lane" style="--c:#9cc65b"><b>Worker &amp; runner</b><small>Model Runner V2</small></li>
+          <li class="lane" style="--c:#58c6df"><b>Model forward</b><small>Llama, compiled</small></li>
+          <li class="lane" style="--c:#e2cf6b"><b>GPU kernels</b><small>attention, GEMMs</small></li>
+          <li class="lane" style="--c:#f17a96"><b>Sampling</b><small>on GPU</small></li>
+          <li class="lane" style="--c:#c08ae0"><b>Update &amp; stop</b><small>EngineCore</small></li>
+          <li class="lane" style="--c:#59cc9c" data-cross="ZMQ"><b>Detokenize &amp; stream</b><small>API process</small></li>
+          <li class="lane" style="--c:#8b96a8"><b>Client</b><small>SSE consumer</small></li>
+          <li class="loop" style="grid-column:6 / 13" aria-label="Engine core through Update and stop repeats per engine step"><span>repeats every engine step</span></li>
+          <li class="packet" aria-hidden="true"></li>
+        </ol>
+      </div>
+    </figure>
+    <p class="scroll-hint">Scroll the strips sideways to see every lane.</p>
+  </div>
+
+  <div class="cmp-wrap">
+    <table class="cmp">
+      <thead><tr><th scope="col">What</th><th scope="col">llama.cpp</th><th scope="col">vLLM</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Where the work runs</th>
+          <td data-k="llama.cpp">One process. Each HTTP request gets a pool thread that builds tasks and waits. A single inference thread does all the model work.</td>
+          <td data-k="vLLM">Two processes. The API process runs one asyncio event loop for HTTP, templating and tokenizing. The EngineCore process owns scheduling and the GPU.</td></tr>
+        <tr><th scope="row">Batching</th>
+          <td data-k="llama.cpp">A fixed number of slots (<code>--parallel</code>). Each tick adds one token per generating slot, fills the rest of the batch with prompt tokens, and makes one <code>llama_decode</code> call.</td>
+          <td data-k="vLLM">Each step spends a token budget (<code>max_num_batched_tokens</code>). Running requests go first, then waiting prompts. Prefill and decode tokens share one flat batch.</td></tr>
+        <tr><th scope="row">Reusing a prompt</th>
+          <td data-k="llama.cpp">Picks the idle slot whose cached tokens share the longest prefix with the new prompt, keeps that part of its KV cache, and only evaluates the rest.</td>
+          <td data-k="vLLM">Hashes the prompt in 16-token blocks and reuses any block already in the cache, even one computed for a different request.</td></tr>
+        <tr><th scope="row">KV cache memory</th>
+          <td data-k="llama.cpp">Finds free cells for each micro-batch. If there is no room, the server retries with a smaller batch.</td>
+          <td data-k="vLLM">Hands out 16-token blocks from a shared pool. If the pool runs dry, the scheduler preempts a running request and recomputes it later.</td></tr>
+        <tr><th scope="row">Running the model</th>
+          <td data-k="llama.cpp">Builds a ggml compute graph and reuses it when the next decode step has the same shape. On NVIDIA GPUs, decode steps can replay a captured CUDA graph.</td>
+          <td data-k="vLLM">Runs a <code>torch.compile</code>d PyTorch model. Decode-only batches replay one full CUDA graph, and the CPU schedules the next step while the GPU is still on this one.</td></tr>
+        <tr><th scope="row">Getting text back</th>
+          <td data-k="llama.cpp">The inference thread turns each token into text and checks stop strings, then wakes the waiting HTTP thread, which writes the SSE chunk.</td>
+          <td data-k="vLLM">Token ids go back over ZMQ. The API process turns them into text, checks stop strings, and writes the SSE chunk.</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">Describes the default setups the tracers assume: a llama.cpp GPU build with all layers offloaded, and <code>vllm serve meta-llama/Llama-3.1-8B-Instruct</code> on one H100. Most of this is configurable.</p>
+  </div>
+</section>
+
+<section class="sec" aria-label="Notes">
+  <div class="notes">
+    <div class="note">
+      <h3>Reading the maps</h3>
+      <ul>
+        <li>Press <b>Trace</b>, or step with <kbd>←</kbd> <kbd>→</kbd>. Each step gets a short note.</li>
+        <li>Click any box to see what it does, example data at that point, and links to the exact source lines.</li>
+        <li>Drag to pan, scroll or pinch to zoom. They work best on a laptop or desktop screen.</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>How they were made</h3>
+      <p>I cloned each repository at a fixed commit and read along the request path with Claude as a reading partner. Every box links to the file and line it describes, and a small script re-checked those references against the pinned commit. Token ids, probabilities and KV block numbers in the examples are made up to illustrate the shape of the data.</p>
+    </div>
+    <div class="note">
+      <h3>Next on my list</h3>
+      <ul>
+        <li>A second request arriving mid-stream, to watch batching happen.</li>
+        <li>The same request on several GPUs with tensor parallelism.</li>
+        <li>Speculative decoding, end to end.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Learning notes, not official documentation. Not affiliated with the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a> projects. Both codebases change quickly, so treat these as a snapshot from early October 2026.</p>
+  <p>Spotted a mistake? Open an issue on this repository.</p>
+</footer>
+
+</div>
+</body>
+</html>

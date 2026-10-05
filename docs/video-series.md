@@ -133,4 +133,4 @@ No personal details in files, video frames, captions or metadata. That means no 
 1. Render the 9:16 cut of Episode 1. The scenes and audio are done; only the render remains.
 2. Episode 2, "Warm Start": a second message reuses slot 0's cached prefix. Show the prompt-processing work that is skipped, with real `timings` from a llama-server run.
 3. The 20-second trailer.
-4. Embed each episode on its tracer page as well as on the start page.
+4. Embed each episode on its tracer page as well as on the start page. Episode 1 is done: an "▶ Episode 1" button in the llama.cpp tracer bar and a thumbnail in its intro panel open a modal player.

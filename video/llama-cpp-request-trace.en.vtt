@@ -1,73 +1,120 @@
 WEBVTT
 
 1
-00:00:01.500 --> 00:00:04.580
-One chat request, traced through llama.cpp.
+00:00:00.900 --> 00:00:01.950
+You ask a question.
 
 2
-00:00:05.100 --> 00:00:09.830
-An HTTP worker thread catches the POST
-and routes it to the chat handler.
+00:00:02.360 --> 00:00:04.330
+A word comes back in milliseconds.
 
 3
-00:00:10.300 --> 00:00:14.560
-The model's own chat template turns
-your messages into a single prompt,
+00:00:05.192 --> 00:00:10.202
+This is everything llama.cpp does in
+between, slowed way down.
 
 4
-00:00:14.700 --> 00:00:17.550
-and the tokenizer cuts it into token IDs.
+00:00:14.265 --> 00:00:16.835
+Your message lands on an HTTP worker
+thread.
 
 5
-00:00:18.200 --> 00:00:20.400
-Posted as a task, it gets a slot.
+00:00:17.245 --> 00:00:18.815
+It never touches the model.
 
 6
-00:00:20.860 --> 00:00:23.590
-Ideally, one that already holds
-this conversation.
+00:00:19.165 --> 00:00:20.415
+It just finds the right handler.
 
 7
-00:00:24.100 --> 00:00:26.900
-Each tick, every busy slot shares one batch,
+00:00:21.792 --> 00:00:27.462
+The model's own chat template wraps your
+words in special tokens, the way it saw
+conversations in training.
 
 8
-00:00:27.100 --> 00:00:29.720
-and the KV cache makes room for new tokens.
+00:00:28.692 --> 00:00:31.982
+Then the tokenizer cuts everything into
+sixteen numbers.
 
 9
-00:00:30.200 --> 00:00:34.400
-libllama builds the graph: 32 layers
-of attention and feed-forward.
+00:00:32.972 --> 00:00:34.822
+Numbers are all the model ever sees.
 
 10
-00:00:35.080 --> 00:00:38.000
-Then GGML runs it on the GPU.
+00:00:37.528 --> 00:00:39.618
+Your request becomes a task on a queue.
 
 11
-00:00:38.600 --> 00:00:41.200
-Out comes a score for every token
-in the vocabulary.
+00:00:40.128 --> 00:00:42.618
+The inference thread picks it up and gives
+it a slot:
 
 12
-00:00:42.100 --> 00:00:44.590
-The sampler narrows the field,
-and draws one.
+00:00:42.948 --> 00:00:45.118
+a lane of its own, with its own memory.
 
 13
-00:00:45.100 --> 00:00:46.950
-It streams back as a server-sent event.
+00:00:47.868 --> 00:00:51.058
+Every tick, every busy slot shares one
+batch.
 
 14
-00:00:47.640 --> 00:00:50.280
-Then the loop runs again:
-one token per tick.
+00:00:51.488 --> 00:00:58.938
+Your sixteen tokens ride along with other
+people's chats, and the KV cache keeps
+what the model works out, so nothing is
+computed twice.
 
 15
-00:00:50.700 --> 00:00:51.950
-Until the model says stop.
+00:01:00.665 --> 00:01:02.195
+libllama builds the graph:
 
 16
-00:00:52.540 --> 00:00:56.770
-The slot goes idle, but keeps its cache,
-so your next message starts warm.
+00:01:02.685 --> 00:01:05.155
+thirty-two layers of attention and feed-
+forward.
+
+17
+00:01:05.725 --> 00:01:07.895
+Then GGML runs it on the GPU.
+
+18
+00:01:09.621 --> 00:01:15.151
+Out comes a score for every token in the
+vocabulary, more than a hundred and
+twenty-eight thousand of them.
+
+19
+00:01:15.621 --> 00:01:18.211
+The sampler trims the field, and draws
+one.
+
+20
+00:01:20.737 --> 00:01:23.267
+That one token streams back to you.
+
+21
+00:01:23.457 --> 00:01:24.547
+Then the loop runs again:
+
+22
+00:01:24.957 --> 00:01:26.527
+one token, every tick.
+
+23
+00:01:28.220 --> 00:01:29.670
+Until the model says stop.
+
+24
+00:01:30.320 --> 00:01:35.150
+The slot goes quiet, but it keeps its
+memory, so your next message starts warm.
+
+25
+00:01:36.530 --> 00:01:37.180
+Next time:
+
+26
+00:01:37.030 --> 00:01:39.240
+why your second message is faster.

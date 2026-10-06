@@ -1,0 +1,171 @@
+{
+  "engine": "llama",
+  "config": "reuse",
+  "repeat": 1,
+  "max_tokens": 256,
+  "cold_ttft_ms": 161.74641899999642,
+  "warm_ttft_ms": 29.14410100004261,
+  "valid": true,
+  "turns": [
+    {
+      "turn": 1,
+      "ttft_ms": 161.74641899999642,
+      "prompt_tokens": 1516,
+      "cache_n": 0,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 2,
+      "ttft_ms": 31.25470099996619,
+      "prompt_tokens": 1518,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 3,
+      "ttft_ms": 30.52645900004336,
+      "prompt_tokens": 1519,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 4,
+      "ttft_ms": 31.53249600001118,
+      "prompt_tokens": 1515,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 5,
+      "ttft_ms": 29.069131000028392,
+      "prompt_tokens": 1516,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 6,
+      "ttft_ms": 27.504069999963576,
+      "prompt_tokens": 1513,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 7,
+      "ttft_ms": 31.119001999968532,
+      "prompt_tokens": 1519,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 8,
+      "ttft_ms": 27.426775000094494,
+      "prompt_tokens": 1515,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 9,
+      "ttft_ms": 28.54468500004259,
+      "prompt_tokens": 1519,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 10,
+      "ttft_ms": 28.129270999897926,
+      "prompt_tokens": 1513,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 11,
+      "ttft_ms": 29.385449999949742,
+      "prompt_tokens": 1512,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 12,
+      "ttft_ms": 29.479739999942467,
+      "prompt_tokens": 1519,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 13,
+      "ttft_ms": 30.477840000003198,
+      "prompt_tokens": 1517,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 14,
+      "ttft_ms": 28.579851000017698,
+      "prompt_tokens": 1511,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 15,
+      "ttft_ms": 30.063920999964466,
+      "prompt_tokens": 1518,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 16,
+      "ttft_ms": 27.790974000026836,
+      "prompt_tokens": 1511,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 17,
+      "ttft_ms": 29.025746999991497,
+      "prompt_tokens": 1519,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 18,
+      "ttft_ms": 32.042627000009816,
+      "prompt_tokens": 1519,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 19,
+      "ttft_ms": 28.98646899996038,
+      "prompt_tokens": 1517,
+      "cache_n": 1491,
+      "ok": true,
+      "error": null
+    },
+    {
+      "turn": 20,
+      "ttft_ms": 29.14410100004261,
+      "prompt_tokens": 1514,
+      "cache_n": 1492,
+      "ok": true,
+      "error": null
+    }
+  ]
+}

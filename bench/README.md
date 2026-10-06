@@ -18,6 +18,12 @@ docker compose -f bench/docker-compose.yml pull vllm
 bash bench/prepare_model.sh                      # download weights, convert to F16 GGUF (about 31 GB in the volume)
 ```
 
+The vLLM image is a CI post-merge tag (`public.ecr.aws/q9t5s3a7/vllm-ci-postmerge-repo:<commit>`), and CI tags can be removed
+without notice. If the pull fails, check out vLLM at the pinned commit `138810056093301f4881050fcf2b1786939da387`,
+build its Docker image from the Dockerfile in that checkout (the `vllm-openai` target), and tag the result with the image name in
+`docker-compose.yml`, or change the `image:` line of the `vllm` service to your own tag. Nothing else needs to change.
+The recorded image digest is in `env.json`.
+
 The `llama` image is a CUDA compile (20 to 40 minutes). Build `llama` and `llama-tools` one after the other;
 building them at the same time can crash the compiler.
 
@@ -48,7 +54,9 @@ Levels whose summary already exists in `--out` are skipped (`--no-skip` reruns t
 time; `run_all.py` starts and stops each through the mounted Docker socket.
 
 `run_all.py` sends 4 untimed `max_tokens 16` probe requests after each server start (main and kvfull) to remove
-first-request JIT and clock-ramp effects. The reuse config skips the probe so its turn 1 is cold.
+first-request JIT and clock-ramp effects. The reuse config skips the probe so its turn 1 is cold for the prefix cache. `--reuse-probe unrelated` sends the same probe
+(four prompts from `main.jsonl`, which share no prefix with the reuse system prompt) before turn 1; this was used for the
+control run in `bench/results/2026-10-06-reuse-control/`, which checks that the cold number does not include server start-up cost.
 
 ## Outputs
 
@@ -56,7 +64,8 @@ first-request JIT and clock-ramp effects. The reuse config skips the probe so it
 one `*.jsonl` of per-request records for every level and repeat (the committed results gzip the `.jsonl` files), the `reuse/` results, and
 `prompt_tokens_check.json`. `NOTES.md` in the committed folder lists the sanity checks, caveats and the claims behind the
 page text. The site reads only the summaries: `node bench/to-site.mjs bench/results/<date>` writes
-`data/bench/llama-cpp.js` and `data/bench/vllm.js`.
+`data/bench/llama-cpp.js` and `data/bench/vllm.js`. `--reuse-from <dir>` takes the prompt reuse numbers from another results
+folder (the page uses the control run that way).
 
 ## Prompts
 

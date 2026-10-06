@@ -136,3 +136,17 @@ test('kvFull omits failed when no repeat reports n_err', () => {
   const kv = JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))).kvFull;
   assert.ok(kv.every((r) => !('failed' in r)));
 });
+
+test('--reuse-from takes only the prompt reuse numbers from another folder', () => {
+  const ctl = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-ctl-'));
+  fs.cpSync(path.join(fixture, 'reuse'), path.join(ctl, 'reuse'), { recursive: true });
+  const file = path.join(ctl, 'reuse', 'vllm.json');
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), cold_ttft_ms: 321, warm_ttft_ms: 33 }));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-ctl-out-'));
+  generate(fixture, out, { reuseFrom: ctl });
+  const text = fs.readFileSync(path.join(out, 'vllm.js'), 'utf8');
+  const data = JSON.parse(text.slice(text.indexOf('registerBench(') + 13 + 1, text.lastIndexOf(')')));
+  assert.deepEqual(data.reuse, { cold_ttft_ms: 321, warm_ttft_ms: 33 });
+  assert.equal(data.levels.length, 2);
+  assert.ok(text.includes("prompt reuse from bench/results/ts-ctl-"));
+});

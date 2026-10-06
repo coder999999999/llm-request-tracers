@@ -2,7 +2,7 @@
 
 ## Run
 
-- Window: 15:55 to 18:06 local time on 2026-10-06 (invocation stamped 2026-10-06T19:55:07Z), about 2 h 11 min. One invocation, `--configs main,reuse,kvfull --repeats 3 --check-tokens`, exit code 0.
+- Window: about 2 h 11 min, started at 2026-10-06T19:55:07Z (UTC). One invocation, `--configs main,reuse,kvfull --repeats 3 --check-tokens`, exit code 0.
 - Output: 60 per-run summaries, no `.failed.json` files. All 42 main-config levels (2 engines x 7 user counts x 3 repeats) are valid with zero failed requests.
 - Harness commit f3d0d5f; llama.cpp commit 2ca15f5; vLLM CI image built from commit 1388100 (image digests in `env.json`).
 
@@ -26,7 +26,7 @@ llama.cpp runs `--kv-unified` with a 32,768-token context shared by all slots; v
 
 | max_tokens | llama.cpp | vLLM |
 |---|---|---|
-| 256 | valid, 402 / 484 / 421 tok/s (repeats 0 to 2), in-window TTFT medians of 2.9 to 7.4 s are not comparable (see below), only 7 to 18 requests in the window | valid, about 2,150 tok/s, TTFT about 500 ms, 0 preemptions |
+| 256 | valid, 402 / 484 / 421 tok/s (repeats 0 to 2), in-window TTFT medians of 2.9 to 7.4 s are not comparable (see below), only 7 to 18 requests in the window | valid, 2,185 tok/s, TTFT about 500 ms, 0 preemptions |
 | 512 | invalid: 128 of 128 requests failed with HTTP 500 "Context size has been exceeded", 100 / 125 / 111 KV-retry log lines | valid, about 2,070 tok/s, TTFT about 820 ms, 65 / 72 / 68 preemptions |
 | 1024 | invalid: 128 of 128 failed, same error, 91 / 91 / 105 KV-retry lines | valid, 1,440 to 1,574 tok/s, TTFT 4.7 to 6.7 s, 255 / 278 / 264 preemptions |
 
@@ -34,6 +34,7 @@ This is genuine engine behaviour, not a harness fault and not rerun. With 64 con
 
 ## Reuse (prefix caching) check
 
+- Control run (`../2026-10-06-reuse-control/`, `--reuse-probe unrelated`, 3 repeats, harness commit as in its `env.json`): the same reuse test, but with the 4 untimed probe requests (main-config prompts, no shared prefix with the reuse system prompt) sent before turn 1. A control run with an unrelated warm-up request gave cold TTFT 165.5 ms (llama.cpp) and 175.5 ms (vLLM), warm 29.1 and 33.9 ms. Without the probe the first run after server start gave 202.4 and 380.1 ms, so that cold figure includes one-time start-up cost (about 18% of it on llama.cpp, more than half on vLLM). The page uses the control run for the prompt reuse chart (`node bench/to-site.mjs bench/results/2026-10-06 --reuse-from bench/results/2026-10-06-reuse-control`); the numbers below are the original run without the probe.
 - llama.cpp: cold TTFT 202.4 ms, warm 28.7 ms. On the 57 warm turns across three repeats, `cache_n` has median 1,492 (range 1,491 to 1,492) against a system prompt of roughly 1,490 tokens and a median prompt of 1,517 tokens. Warm turns therefore hit the cache for the whole shared prefix; only the new turn text is evaluated.
 - vLLM: cold TTFT 380.1 ms, warm 33.2 ms. The vLLM API does not report a per-request cached-token count, so `cache_n` is null; the 11x drop in TTFT is the evidence of prefix-cache hits.
 - Both reuse levels are valid.
@@ -47,7 +48,7 @@ This is genuine engine behaviour, not a harness fault and not rerun. With 64 con
 
 ## Claims
 
-Every sentence of benchmark-derived text on the comparison page, with the chart point or file that backs it. Text lives in `data/pairs/llama-cpp--vllm.js`; numbers are from `data/bench/*.js` (generated from the summaries in this folder). Ratios are vLLM divided by llama.cpp.
+Every sentence of benchmark-derived text on the comparison page, with the chart point or file that backs it. Text lives in `data/pairs/llama-cpp--vllm.js`; numbers are from `data/bench/*.js` (generated from the summaries in this folder, with the prompt reuse numbers from the control run). Ratios are vLLM divided by llama.cpp.
 
 ### Questions
 
@@ -61,7 +62,7 @@ Every sentence of benchmark-derived text on the comparison page, with the chart 
 |---|---|
 | Matched vLLM at 1 user, 50.4 against 49.4 tok/s | throughput chart, 1 user; `levels[0].tok_s.median` 50.4 and 49.37 |
 | At most 1.2x behind up to 8 users | throughput chart: 2 users 97.05 / 97.40, 4 users 182.7 / 192.7, 8 users 327.3 / 379.5 (ratio 1.16) |
-| First token after 202 ms against 380 ms with a ~1,490-token system prompt | prompt reuse chart, "First message" bars; `reuse.cold_ttft_ms` 202.4 and 380.1. System prompt size: reuse section above (about 1,490 tokens) |
+| About 1,490 tokens of system prompt: repeat messages reached the first token in 29 ms against 34 ms for vLLM, the first message in 166 ms against 175 ms | prompt reuse chart; control run `reuse.warm_ttft_ms` 29.14 and 33.89, `reuse.cold_ttft_ms` 165.5 and 175.5. The cold gap is under 10% of the larger value, so no cold-start claim is made. System prompt size: reuse section above (about 1,490 tokens) |
 | Model is a GGUF file, loader reads it | Model formats feature row, `src/llama-model-loader.cpp:570` |
 | Hardware row lists build-time backends such as CUDA and Metal | Hardware feature row, `ggml/src/ggml-backend-reg.cpp:120` |
 | Only CUDA on one RTX 4090 was measured | `env.json` gpu; Method section |
@@ -84,9 +85,9 @@ Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `-
 | q1: 2,209 against 892 tok/s at 64 users | throughput chart, 64 users |
 | q1: 115 ms against 420 ms before prefill at 32 users | stage-time row, as above |
 | q1: code paths differ (fixed slots against one shared token budget per step); the data does not isolate the cause | Batching feature row for both engines (`common/arg.cpp:2544`, `vllm/v1/core/sched/scheduler.py:591`) |
-| q2: about 1,490-token system prompt; 202 to 29 ms (llama.cpp), 380 to 33 ms (vLLM); roughly 7 and 11 times | prompt reuse chart; `reuse` cold/warm 202.4 / 28.7 (ratio 7.05) and 380.1 / 33.2 (ratio 11.5); Reuse section above |
+| q2: about 1,490-token system prompt; 166 to 29 ms (llama.cpp), 175 to 34 ms (vLLM); roughly 6 and 5 times | prompt reuse chart; control run cold/warm 165.5 / 29.14 (ratio 5.7) and 175.5 / 33.89 (ratio 5.2); Reuse section above |
 | q2: llama.cpp slot choice with similarity threshold, vLLM whole prefix blocks across requests | Prompt reuse feature row (`server-context.cpp:1657`, `kv_cache_manager.py:264`); unchanged from the earlier text |
-| q2: on the cold first message llama.cpp was faster | prompt reuse chart, "First message" bars |
+| q2: on the cold first message the two were within 6% of each other, 166 against 175 ms | prompt reuse chart, "First message" bars; 175.5 / 165.5 = 1.06 |
 | q3: unchanged | code paths, hops and Detokenizing and Tokenizing feature rows |
 | q4: 64 users, 32,768-token KV budget | `env.json` `server_args.kvfull`; Fairness rules in the spec (§5.2) |
 | q4: at 256 tokens both engines finished every request | table: failed requests 0 on both. The llama.cpp 421 tok/s at 256 tokens is not cited on the page: no established cause for its gap to the main-config 892 (see KV-full findings) |
@@ -98,10 +99,14 @@ Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `-
 | Annotation | Backing |
 |---|---|
 | Throughput: "vLLM 2.5x at 64 users" | ratio of `levels` tok_s medians at 64 users |
-| Reuse: "Cold: vLLM takes 1.9x as long" | 380.1 / 202.4 |
-| Reuse: "Warm: 28.7 ms against 33.2 ms" | `reuse.warm_ttft_ms`: 28.7 (llama.cpp, typed text) and 33.2 (vLLM, filled from data) |
+| Reuse: "Cold: vLLM 1.1x the llama.cpp time" | control run 175.5 / 165.5 |
+| Reuse: "Warm: 29.1 ms against 33.9 ms" | control run `reuse.warm_ttft_ms`: 29.1 (llama.cpp, typed text) and 33.9 (vLLM, filled from data) |
 | KV: "vLLM: 2,185 tokens per second" (at 256) | vLLM kvFull tok_s at 256 |
 | KV: "llama.cpp: all 128 failed" (at 1,024) | llama.cpp kvFull failed at 1,024; drawn at that value on the tokens-per-second axis, so its height means nothing |
+
+### Method section, "Against published numbers"
+
+Local figures: 50.4 tok/s at 1 user (main config), 2,209 tok/s and 2.5x at 64 users (main config), cold reuse prompt of 1,516 tokens (`prompt_tokens` of turn 1 in the control run) in 165.5 ms, about 9,160 tok/s, written as about 9,200. Single-user ceiling: 16 GB of F16 weights at 1,008 GB/s, about 63 tok/s; 50.4 / 63 = 0.80. Published figures (54.3 tok/s, 2,285 to 2,374 tok/s, 6,500 to 9,400 tok/s, about 44x on an H200) are quoted from the linked pages and were not re-measured here; the llama.cpp slot count in the Red Hat comparison is not stated there. Here llama.cpp ran with 64 slots at 64 users (one per user).
 
 ### Feature wording audited
 

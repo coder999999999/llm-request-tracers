@@ -90,3 +90,20 @@ test('compare.js defines 4 stages and 4 questions', () => {
 test('loadSiteData tolerates missing data directories', () => {
   assert.doesNotThrow(() => loadSiteData(root));
 });
+
+test('shipped engine data loads with no errors and the expected step counts', () => {
+  const RT = loadSiteData(root);
+  assert.deepEqual(RT.errors, []);
+  const counts = id => Object.fromEntries(
+    Object.entries(RT.engines[id].steps).map(([stage, list]) => [stage, list.length]));
+  assert.deepEqual(counts('llama-cpp'), { arrive: 8, wait: 6, think: 21, speak: 5 });
+  assert.deepEqual(counts('vllm'), { arrive: 9, wait: 9, think: 18, speak: 8 });
+  for (const id of ['llama-cpp', 'vllm']) {
+    const hops = Object.values(RT.engines[id].steps).flat().filter(s => s.hop);
+    assert.equal(hops.length, 2, id);
+    for (const [key, f] of Object.entries(RT.engines[id].features)) {
+      assert.ok(f.value.length <= 70, `${id}.${key} value too long`);
+      assert.ok(f.file && f.line && f.check, `${id}.${key} lacks a source reference`);
+    }
+  }
+});

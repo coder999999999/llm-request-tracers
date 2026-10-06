@@ -11,11 +11,11 @@ RT.registerPair({
     },
     wait: {
       'llama-cpp': 'The request is posted to a queue and picked up by the single inference thread, which gives it one of a fixed number of slots.',
-      vllm: 'The request crosses into the EngineCore process over ZMQ and joins the scheduler\'s waiting queue. Every step spends one token budget shared by all requests.'
+      vllm: 'The request crosses into the EngineCore process over ZMQ and is added to the scheduler, which admits WAITING requests on each step. Every step spends one token budget shared by all requests.'
     },
     think: {
       'llama-cpp': 'The slot reuses the cached prefix it shares with the new prompt. One batch per tick then covers every active slot.',
-      vllm: 'The scheduler looks up cached prefix blocks and allocates KV blocks. Prefill and decode share one flat batch, run with CUDA graphs by default.'
+      vllm: 'The scheduler looks up cached prefix blocks and allocates KV blocks. Prefill and decode share one flat batch, and decode runs with full CUDA graphs by default.'
     },
     speak: {
       'llama-cpp': 'The inference thread detokenizes each token and posts a partial result. The HTTP thread reads it and frames it as a server-sent event.',

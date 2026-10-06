@@ -16,7 +16,7 @@
 /* Tokens follow mockups/v4-polished.html. Spacing uses 4, 8, 12, 16, 24, 32, 48, 64 and 96 only.
    Archivo Narrow is for the H1 and chapter H2s, Archivo for everything else, IBM Plex Mono for code and file:line. */
 :root{
-  --bg:#f7f6f2; --ink:#121212; --ink2:#4b4b48; --ink3:#86847d; --rule:#e2dfd6; --rule2:#121212;
+  --bg:#f7f6f2; --ink:#121212; --ink2:#4b4b48; --ink3:#86847d; /* large decorative text only (the "or" in the H1) */ --rule:#e2dfd6; --rule2:#121212;
   --a:#d9662a; --b:#2b54d0;
   --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   --display:"Archivo Narrow","Arial Narrow",sans-serif;
@@ -68,7 +68,7 @@ code{font:13.5px var(--mono)}
 .qs{list-style:none;margin:0;padding:0;align-self:end;border-top:2px solid var(--rule2)}
 .qs li{border-bottom:1px solid var(--rule)}
 .qs a{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;padding:16px 0;text-decoration:none;font:600 19px/1.35 var(--sans)}
-.qs a span{color:var(--ink3);font-weight:500;font-variant-numeric:tabular-nums}
+.qs a span{color:var(--ink2);font-weight:500;font-variant-numeric:tabular-nums}
 .qs a:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .qs b{font-weight:600}
 
@@ -76,7 +76,7 @@ code{font:13.5px var(--mono)}
 .chapter{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding-block:48px 64px;border-top:2px solid var(--rule2)}
 .chapter>div{min-width:0}
 @media (min-width:1100px){.chapter{grid-template-columns:minmax(0,1fr) 280px;gap:96px;padding-block:64px 96px}}
-.num{font:700 15px var(--sans);color:var(--ink3);font-variant-numeric:tabular-nums}
+.num{font:700 15px var(--sans);color:var(--ink2);font-variant-numeric:tabular-nums}
 .chapter h2{margin:12px 0 24px;font:700 clamp(36px,5vw,60px)/.95 var(--display);letter-spacing:-.02em;text-transform:uppercase;max-width:13em;overflow-wrap:anywhere}
 .ans{margin:0 0 48px;font-size:22px;line-height:1.5;max-width:31em;color:var(--ink)}
 @media (max-width:600px){.ans{font-size:19px}}
@@ -86,8 +86,8 @@ code{font:13.5px var(--mono)}
 figure{margin:0}
 .fig-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 24px}
 .fig-h h3{font:600 17px var(--sans)}
-.fig-h p{margin:0;font-size:14px;color:var(--ink3)}
-figcaption{margin-top:12px;font-size:14px;color:var(--ink3)}
+.fig-h p{margin:0;font-size:14px;color:var(--ink2)}
+figcaption{margin-top:12px;font-size:14px;color:var(--ink2)}
 figure svg{margin-top:12px}
 
 .empty{margin:0;padding:24px 0;font-size:15px;color:var(--ink2);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
@@ -103,7 +103,7 @@ figure:has(.empty) + .empty{display:none}
 .stagebar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)}
 .stagebar .track{height:10px;background:#ebe8df;border-radius:2px;overflow:hidden}
 .stagebar .track i{display:block;height:100%}
-.stagebar .hd{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:14px;color:var(--ink3);margin-bottom:4px}
+.stagebar .hd{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:14px;color:var(--ink2);margin-bottom:4px}
 .stagebar .gap{grid-column:1/-1;margin-top:4px;font-size:15px;font-weight:600}
 @media (max-width:600px){.stagebar{grid-template-columns:88px minmax(0,1fr) 64px}}
 
@@ -113,7 +113,7 @@ figure:has(.empty) + .empty{display:none}
 @media (max-width:760px){.paths{grid-template-columns:minmax(0,1fr);gap:32px}}
 .path{min-width:0}
 .path h4,.sum h4{margin:0 0 8px;font:700 15px var(--sans)}
-.path h4 em,.sum h4 em{font-style:normal;font-weight:400;color:var(--ink3)}
+.path h4 em,.sum h4 em{font-style:normal;font-weight:400;color:var(--ink2)}
 .step{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;padding:12px 0;border-top:1px solid var(--rule)}
 .step b{font-weight:600;font-size:16px}
 .step code{grid-column:1/-1;color:var(--ink2);overflow-wrap:anywhere}
@@ -129,7 +129,7 @@ summary:hover{text-decoration:underline;text-underline-offset:4px}
 .facts{margin-top:64px;border-top:2px solid var(--rule2)}
 .facts .r{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);gap:32px;padding:16px 0;border-bottom:1px solid var(--rule);font-size:16px}
 .facts .r b{font-weight:600}
-.facts .h{font-size:14px;color:var(--ink3);padding:12px 0}
+.facts .h{font-size:14px;color:var(--ink2);padding:12px 0}
 .facts .src{display:block;margin-top:4px;white-space:normal;overflow-wrap:anywhere}
 @media (max-width:700px){
   .facts .r{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
@@ -183,11 +183,11 @@ aside.track svg{display:block;width:100%}
 @media (prefers-reduced-motion:reduce){.reel .play{transition:none}.reel button:hover .play{transform:none}}
 .eps{list-style:none;margin:0;padding:0;border-top:2px solid var(--rule2)}
 .ep{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px 16px;padding:16px 0;border-bottom:1px solid var(--rule)}
-.ep .n{color:var(--ink3);font-weight:500;font-variant-numeric:tabular-nums}
+.ep .n{color:var(--ink2);font-weight:500;font-variant-numeric:tabular-nums}
 .ep h3{font:600 19px/1.35 var(--sans)}
 .ep p{margin:4px 0 0;font-size:16px;color:var(--ink2)}
-.ep .meta{font-size:14px;color:var(--ink3)}
-.ep .st{font-size:15px;color:var(--ink3);white-space:nowrap;text-align:right}
+.ep .meta{font-size:14px;color:var(--ink2)}
+.ep .st{font-size:15px;color:var(--ink2);white-space:nowrap;text-align:right}
 .ep.now .st a{color:var(--ink);font-weight:600;text-underline-offset:4px}
 @media (max-width:600px){.ep{grid-template-columns:32px minmax(0,1fr)}.ep .st{grid-column:2;text-align:left}}
 .next-series{margin:32px 0 0;font-size:16px;color:var(--ink2)}

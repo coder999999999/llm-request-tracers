@@ -7,7 +7,7 @@
   var RTU = window.RTU;
   var RTC = window.RTC = window.RTC || {};
 
-  var INK = '#121212', INK3 = '#86847d', RULE = '#e2dfd6', BG = '#f7f6f2';
+  var INK = '#121212', INK3 = '#4b4b48', RULE = '#e2dfd6', BG = '#f7f6f2';
   var FONT = 'Archivo, system-ui, sans-serif';
   var EN_DASH = '–';
 

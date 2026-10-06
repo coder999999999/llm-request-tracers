@@ -16,7 +16,7 @@
   var EMPTY = 'Benchmark running, results soon';
   var NOT_COVERED = 'Not covered yet';
   var NO_PAIR = 'No write-up for this pair yet';
-  var INK = '#121212', INK2 = '#4b4b48', INK3 = '#86847d', RULE = '#e2dfd6', BG = '#f7f6f2';
+  var INK = '#121212', INK2 = '#4b4b48', INK3 = '#4b4b48', RULE = '#e2dfd6', BG = '#f7f6f2';
   var FONT = 'Archivo, system-ui, sans-serif';
 
   function esc(s) { return RTU.esc(s); }

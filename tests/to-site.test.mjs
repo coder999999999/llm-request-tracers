@@ -56,7 +56,7 @@ test('run block, reuse and kvFull', () => {
   assert.deepEqual(llama.run, { date: '2026-10-06', gpu: 'Test GPU 24GB', model: 'Llama 3.1 8B Instruct', commit: 'aaaaaaa', config: 'main' });
   assert.equal(vllm.run.commit, 'bbbbbbb');
   assert.equal(llama.id, 'llama-cpp');
-  assert.deepEqual(llama.reuse, { cold_ttft_ms: 1200, warm_ttft_ms: 90, warm_cache_n_median: 480 });
+  assert.deepEqual(llama.reuse, { cold_ttft_ms: 1200, warm_ttft_ms: 90, warm_cache_n_median: 490 });
   assert.deepEqual(vllm.reuse, { cold_ttft_ms: 1100, warm_ttft_ms: 40 });
   assert.deepEqual(llama.kvFull, [
     { max_tokens: 256, tok_s: 490, ttft_ms: 210, kv_retries: 0, failed: 0 },
@@ -103,4 +103,36 @@ test('CLI writes both files with --out and fails clearly on an empty folder', ()
   const bad = spawnSync(process.execPath, [cli, empty, '--out', out], { encoding: 'utf8' });
   assert.notEqual(bad.status, 0);
   assert.match(bad.stderr, /no valid main-config summaries/);
+});
+
+test('reuse falls back to the valid per-repeat files when the aggregate is invalid', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-reuse-'));
+  fs.cpSync(fixture, tmp, { recursive: true });
+  const edit = (f, patch) => {
+    const file = path.join(tmp, 'reuse', f);
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), ...patch }));
+  };
+  edit('llama.json', { valid: false, cold_ttft_ms: 9999, warm_ttft_ms: 9999 });
+  edit('llama-r1.json', { valid: false });
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-reuse-out-'));
+  generate(tmp, out);
+  const text = fs.readFileSync(path.join(out, 'llama-cpp.js'), 'utf8');
+  const reuse = JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))).reuse;
+  assert.deepEqual(reuse, { cold_ttft_ms: 1200, warm_ttft_ms: 90, warm_cache_n_median: 480 });
+});
+
+test('kvFull omits failed when no repeat reports n_err', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-kv-'));
+  fs.cpSync(fixture, tmp, { recursive: true });
+  for (const f of fs.readdirSync(path.join(tmp, 'vllm', 'kvfull'))) {
+    const file = path.join(tmp, 'vllm', 'kvfull', f);
+    const o = JSON.parse(fs.readFileSync(file, 'utf8'));
+    delete o.n_err;
+    fs.writeFileSync(file, JSON.stringify(o));
+  }
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-kv-out-'));
+  generate(tmp, out);
+  const text = fs.readFileSync(path.join(out, 'vllm.js'), 'utf8');
+  const kv = JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))).kvFull;
+  assert.ok(kv.every((r) => !('failed' in r)));
 });

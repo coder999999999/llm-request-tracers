@@ -76,25 +76,21 @@ function buildReuse(engine, resultsDir) {
   const dir = path.join(resultsDir, 'reuse');
   const aggFile = path.join(dir, `${engine.dir}.json`);
   const agg = fs.existsSync(aggFile) ? readJson(aggFile) : null;
-  let cold = null, warm = null, turns = [];
-  if (agg && agg.valid !== false) {
-    cold = agg.cold_ttft_ms;
-    warm = agg.warm_ttft_ms;
-    turns = agg.turns || [];
-  } else if (fs.existsSync(dir)) {
-    // aggregate missing or marked invalid: rebuild from the valid per-repeat files
-    const re = new RegExp(`^${engine.dir}-r\d+\.json$`);
-    const reps = fs.readdirSync(dir).filter((f) => re.test(f)).sort().map((f) => readJson(path.join(dir, f)))
-      .filter((r) => r.valid !== false);
-    cold = median(reps.map((r) => r.cold_ttft_ms));
-    warm = median(reps.map((r) => r.warm_ttft_ms));
-    turns = reps.length ? reps[0].turns || [] : [];
-  }
+  const re = new RegExp(String.raw`^${engine.dir}-r\d+\.json$`);
+  const reps = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((f) => re.test(f)).sort().map((f) => readJson(path.join(dir, f)))
+      .filter((r) => r.valid !== false)
+    : [];
+  // the aggregate holds medians across repeats; when it is marked invalid, rebuild from the valid repeats
+  const useAgg = agg && agg.valid !== false;
+  const cold = useAgg ? agg.cold_ttft_ms : median(reps.map((r) => r.cold_ttft_ms));
+  const warm = useAgg ? agg.warm_ttft_ms : median(reps.map((r) => r.warm_ttft_ms));
   const out = {};
   if (isNum(cold)) out.cold_ttft_ms = cold;
   if (isNum(warm)) out.warm_ttft_ms = warm;
   if (engine.id === 'llama-cpp') {
-    const cacheN = median(turns.slice(1).map((t) => t.cache_n));
+    // median across valid repeats of each repeat's median warm-turn (turn 2 on) cache_n
+    const cacheN = median(reps.map((r) => median((r.turns || []).slice(1).map((t) => t.cache_n))));
     if (cacheN !== null) out.warm_cache_n_median = cacheN;
   }
   return Object.keys(out).length ? out : null;
@@ -106,7 +102,7 @@ function buildKvFull(engine, resultsDir) {
     if (!byTokens.has(s.max_tokens)) byTokens.set(s.max_tokens, []);
     byTokens.get(s.max_tokens).push(s); // failing runs are the point here, so valid:false stays in
   }
-  const extraKey = engine.id === 'vllm' ? ['preemptions', 'preemptions'] : ['kv_retries', 'kv_retries'];
+  const extraKey = engine.id === 'vllm' ? 'preemptions' : 'kv_retries';
   const rows = [];
   for (const mt of [...byTokens.keys()].sort((a, b) => a - b)) {
     const reps = byTokens.get(mt);
@@ -115,9 +111,10 @@ function buildKvFull(engine, resultsDir) {
     const ttft = median(reps.map((s) => s.ttft_ms && s.ttft_ms.median));
     if (tokS !== null) row.tok_s = tokS;
     if (ttft !== null) row.ttft_ms = ttft;
-    const extra = median(reps.map((s) => serverField(s, extraKey[1])));
-    if (extra !== null) row[extraKey[0]] = extra;
-    row.failed = median(reps.map((s) => s.n_err)) ?? 0;
+    const extra = median(reps.map((s) => serverField(s, extraKey)));
+    if (extra !== null) row[extraKey] = extra;
+    const failed = median(reps.map((s) => s.n_err));
+    if (failed !== null) row.failed = failed;
     rows.push(row);
   }
   return rows;

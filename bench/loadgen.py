@@ -141,6 +141,7 @@ class LevelResult:
     warmup_s: float
     measure_s: float
     users: int
+    callback_error: Optional[str] = None  # set if on_window_start raised; the level itself is kept
 
 
 def _messages(p):
@@ -159,10 +160,10 @@ async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
     Pass the same `warmup_s` to `summarize`. `prompts` items are message lists or
     dicts {"id", "messages"}.
     `on_window_start`, if given, is awaited once exactly when warm-up ends, in its own task
-    so it never delays workers; its exception (if any) is raised after the level finishes."""
+    so it never delays workers; an exception it raises is recorded in `LevelResult.callback_error` and the level is kept."""
     t0 = time.perf_counter()
     end_s = warmup_s + measure_s
-    records, partials = [], []
+    records, partials, cb_error = [], [], []
 
     async def worker(client, u):
         i = u * 7
@@ -192,19 +193,25 @@ async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
         if on_window_start is not None:
             async def fire():
                 await asyncio.sleep(max(0.0, warmup_s - (time.perf_counter() - t0)))
-                await on_window_start()
+                try:
+                    await on_window_start()
+                except Exception as e:  # noqa: BLE001 - never lose the level over a metrics hook
+                    cb_error.append(f"{type(e).__name__}: {e}")
             cb_task = asyncio.create_task(fire())
-        await asyncio.sleep(max(0.0, end_s - (time.perf_counter() - t0)))
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if cb_task is not None:
-            await cb_task
+        try:
+            await asyncio.sleep(max(0.0, end_s - (time.perf_counter() - t0)))
+        finally:
+            for t in tasks:
+                t.cancel()
+            if cb_task is not None and not cb_task.done():
+                cb_task.cancel()
+            await asyncio.gather(*tasks, *( [cb_task] if cb_task else [] ), return_exceptions=True)
     for rec in partials:
         rec.in_window = False
         if any(warmup_s <= t <= end_s for t in rec.chunk_times):
             records.append(rec)
-    return LevelResult(records=records, warmup_s=warmup_s, measure_s=measure_s, users=users)
+    return LevelResult(records=records, warmup_s=warmup_s, measure_s=measure_s, users=users,
+                       callback_error=cb_error[0] if cb_error else None)
 
 
 def _pcts(values):

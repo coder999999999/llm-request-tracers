@@ -180,6 +180,17 @@ def assert_no_private_paths(text: str):
         raise ValueError(f"env.json would contain a private path near {text[max(0, m.start() - 20):m.end() + 20]!r}")
 
 
+def harness_commit(run=sh):
+    """git HEAD of the harness; inside the client container (no .git) falls back to $HARNESS_COMMIT."""
+    try:
+        c = run(["git", "-C", str(HERE.parent), "rev-parse", "HEAD"]).strip()
+        if c:
+            return c
+    except Exception:  # noqa: BLE001
+        pass
+    return os.environ.get("HARNESS_COMMIT") or None
+
+
 def collect_env(run=sh) -> dict:
     """`run(cmd_list) -> stdout`; injectable for tests."""
     nsmi = ["docker", "run", "--rm", "--gpus", "all", "--entrypoint", "nvidia-smi", IMAGES["llama"]]
@@ -195,11 +206,7 @@ def collect_env(run=sh) -> dict:
             images[key] = {"ref": ref, "id": image_id, "repo_digests": json.loads(digests)}
         except Exception as e:  # noqa: BLE001
             images[key] = {"ref": ref, "error": type(e).__name__}
-    harness = os.environ.get("HARNESS_COMMIT")
-    try:
-        harness = run(["git", "-C", str(HERE.parent), "rev-parse", "HEAD"]).strip() or harness
-    except Exception:  # noqa: BLE001 - no .git inside the client container
-        pass
+    harness = harness_commit(run)
 
     def g(*names):
         for n in names:
@@ -229,10 +236,24 @@ def collect_env(run=sh) -> dict:
     }
 
 
-def write_env(out: Path):
-    text = json.dumps(collect_env(), indent=2)
+def write_env(out: Path, args=None, run=sh, require_harness=True):
+    """env.json is created once per run folder; later invocations append to `invocations`."""
+    path = out / "env.json"
+    commit = harness_commit(run)
+    if require_harness and not commit:
+        raise RuntimeError("harness git commit unknown: pass -e HARNESS_COMMIT=<sha> "
+                           "(or --allow-no-harness-commit for a dry run)")
+    entry = {"time": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "harness_commit": commit, "args": list(args or [])}
+    if path.exists():
+        env = json.loads(path.read_text())
+    else:
+        env = collect_env(run)
+        env["invocations"] = []
+    env["invocations"].append(entry)
+    text = json.dumps(env, indent=2)
     assert_no_private_paths(text)
-    (out / "env.json").write_text(text + "\n")
+    path.write_text(text + "\n")
 
 
 # ---------------------------------------------------------------- execution
@@ -282,16 +303,24 @@ async def run_one_level(run: Run, out: Path, prompts, warmup_s, measure_s):
     level = await loadgen.run_level(base, MODEL, prompts, run.users, warmup_s=warmup_s,
                                     measure_s=measure_s, max_tokens=run.max_tokens,
                                     on_window_start=on_window_start)
-    if run.engine == "vllm":
-        server = metrics.vllm_stage_means(state["before"], await _scrape(base))
-    else:
-        logs = compose("logs", "--no-color", "--since", state["since"], "llama", check=False).stdout
-        server = llama_server_summary(level, metrics.count_kv_retries(logs))
     d = out / run.engine / run.config
-    write_records(d / f"{run.stem}.jsonl", level.records)
+    write_records(d / f"{run.stem}.jsonl", level.records)  # raw data first, whatever happens next
     summary = loadgen.summarize(level)
-    summary.update(server=server, config=run.config, engine=run.engine, users=run.users,
+    summary.update(config=run.config, engine=run.engine, users=run.users,
                    repeat=run.repeat, max_tokens=run.max_tokens)
+    summary["server"] = {"error": "not collected"}
+    write_json(d / f"{run.stem}.summary.json", summary)
+    try:
+        if level.callback_error:
+            raise RuntimeError(f"window-start hook failed: {level.callback_error}")
+        if run.engine == "vllm":
+            server = metrics.vllm_stage_means(state["before"], await _scrape(base))
+        else:
+            logs = compose("logs", "--no-color", "--since", state["since"], "llama", check=False).stdout
+            server = llama_server_summary(level, metrics.count_kv_retries(logs))
+    except Exception as e:  # noqa: BLE001
+        server = {"error": f"{type(e).__name__}: {e}"}
+    summary["server"] = server
     write_json(d / f"{run.stem}.summary.json", summary)
     return summary
 
@@ -359,30 +388,90 @@ def group_runs(runs):
     return groups
 
 
-def done(run: Run, out: Path) -> bool:
+def result_path(run: Run, out: Path) -> Path:
     if run.kind == "reuse":
-        return (out / "reuse" / f"{run.engine}-r{run.repeat}.json").exists()
-    return (out / run.engine / run.config / f"{run.stem}.summary.json").exists()
+        return out / "reuse" / f"{run.engine}-r{run.repeat}.json"
+    return out / run.engine / run.config / f"{run.stem}.summary.json"
 
 
-def execute_group(group, out: Path, prompts, warmup_s, measure_s):
+def failed_path(run: Run, out: Path) -> Path:
+    p = result_path(run, out)
+    return p.with_name(p.name.removesuffix(".summary.json").removesuffix(".json") + ".failed.json")
+
+
+def done(run: Run, out: Path, retry_invalid=False) -> bool:
+    p = result_path(run, out)
+    if not p.exists():
+        return False
+    if retry_invalid:
+        try:
+            if not json.loads(p.read_text()).get("valid"):
+                return False
+        except ValueError:
+            return False
+    return True
+
+
+def _log_tail(engine: str, n=50) -> str:
+    try:
+        return compose("logs", "--no-color", "--tail", str(n), engine, check=False).stdout[-8000:]
+    except Exception as e:  # noqa: BLE001
+        return f"(could not read logs: {type(e).__name__}: {e})"
+
+
+def record_failure(run: Run, out: Path, exc: BaseException):
+    msg = f"{type(exc).__name__}: {exc}"
+    print(f"  FAILED {run.engine}/{run.config} u{run.users} m{run.max_tokens} r{run.repeat}: {msg}", flush=True)
+    write_json(failed_path(run, out), {
+        "engine": run.engine, "config": run.config, "users": run.users, "max_tokens": run.max_tokens,
+        "repeat": run.repeat, "error_type": type(exc).__name__, "message": str(exc),
+        "log_tail": _log_tail(run.engine).splitlines()[-50:],
+    })
+
+
+def probe(engine: str, prompts):
+    """Untimed warm-up: 4 short requests with the pinned template date; results are discarded."""
+    async def go():
+        t0 = time.perf_counter()
+        async with httpx.AsyncClient(timeout=120) as client:
+            for p in prompts[:4]:
+                await loadgen.one_request(client, URLS[engine], MODEL, loadgen._messages(p), 16, t0)
+    asyncio.run(go())
+
+
+def execute_group(group, out: Path, prompts, warmup_s, measure_s) -> int:
+    """Returns the number of failed runs. Never raises for server/level failures."""
     first = group[0]
     print(f"[start] {first.engine}/{first.config} r{first.repeat}", flush=True)
-    start_server(first.engine, first.config)
+    failures = 0
     try:
+        start_server(first.engine, first.config)
         wait_healthy(first.engine)
+        probe(first.engine, prompts)
+    except Exception as e:  # noqa: BLE001
         for run in group:
-            if run.kind == "reuse":
-                res = asyncio.run(run_reuse(run, out))
-                print(f"  reuse cold={res['cold_ttft_ms']} warm={res['warm_ttft_ms']} valid={res['valid']}",
-                      flush=True)
-            else:
-                s = asyncio.run(run_one_level(run, out, prompts, warmup_s, measure_s))
-                ttft = (s["ttft_ms"] or {}).get("median")
-                print(f"  u{run.users} m{run.max_tokens} valid={s['valid']} n_ok={s['n_ok']} "
-                      f"ttft_med={ttft} tok_s={s['tok_s']} server={s['server']}", flush=True)
+            record_failure(run, out, e)
+        stop_servers()
+        return len(group)
+    try:
+        for run in group:
+            try:
+                if run.kind == "reuse":
+                    res = asyncio.run(run_reuse(run, out))
+                    print(f"  reuse cold={res['cold_ttft_ms']} warm={res['warm_ttft_ms']} valid={res['valid']}",
+                          flush=True)
+                else:
+                    s = asyncio.run(run_one_level(run, out, prompts, warmup_s, measure_s))
+                    ttft = (s["ttft_ms"] or {}).get("median")
+                    print(f"  u{run.users} m{run.max_tokens} valid={s['valid']} n_ok={s['n_ok']} "
+                          f"ttft_med={ttft} tok_s={s['tok_s']} server={s['server']}", flush=True)
+                failed_path(run, out).unlink(missing_ok=True)
+            except Exception as e:  # noqa: BLE001
+                failures += 1
+                record_failure(run, out, e)
     finally:
         stop_servers()
+    return failures
 
 
 # ---------------------------------------------------------------- prompt_tokens agreement
@@ -430,6 +519,10 @@ def main(argv=None):
     ap.add_argument("--check-tokens", action="store_true",
                     help="exit 2 if prompt_tokens differ by more than 1 between engines")
     ap.add_argument("--no-skip", action="store_true", help="re-run levels whose summary already exists")
+    ap.add_argument("--retry-invalid", action="store_true",
+                    help="on resume, also re-run levels whose summary is valid:false")
+    ap.add_argument("--allow-no-harness-commit", action="store_true",
+                    help="dry runs only: do not fail when the harness git commit is unknown")
     a = ap.parse_args(argv)
     configs = [c for c in a.configs.split(",") if c]
     engines = [e for e in a.engines.split(",") if e]
@@ -440,12 +533,14 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     runs = plan_runs(a.repeats, configs, engines, [int(x) for x in a.levels.split(",")])
     prompts = load_prompts()
+    failures = 0
     try:
-        write_env(out)
+        write_env(out, argv if argv is not None else sys.argv[1:],
+                  require_harness=not a.allow_no_harness_commit)
         for group in group_runs(runs):
-            todo = [r for r in group if a.no_skip or not done(r, out)]
+            todo = [r for r in group if a.no_skip or not done(r, out, a.retry_invalid)]
             if todo:
-                execute_group(todo, out, prompts, a.warmup, a.measure)
+                failures += execute_group(todo, out, prompts, a.warmup, a.measure)
     finally:
         stop_servers()
     if set(engines) == set(ENGINES) and "main" in configs:
@@ -454,6 +549,9 @@ def main(argv=None):
         print_agreement(rows, ok)
         if a.check_tokens and not ok:
             return 2
+    if failures:
+        print(f"{failures} run(s) failed; see *.failed.json", flush=True)
+        return 1
     return 0
 
 

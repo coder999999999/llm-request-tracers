@@ -219,3 +219,15 @@ def test_on_window_start_fires_once_at_warmup_end_without_delaying_workers():
     assert len(fired) == 1
     assert 0.28 <= fired[0] - t0 <= 0.45
     assert any(r.ok and r.start_s > 0.35 for r in res.records)  # workers kept going meanwhile
+
+
+def test_raising_on_window_start_keeps_the_level():
+    h = handler_for([chunk("a")], [0.001])
+
+    async def bad():
+        raise RuntimeError("scrape failed")
+    res = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
+                        warmup_s=0.2, measure_s=0.4, max_tokens=1,
+                        transport=httpx.MockTransport(h), on_window_start=bad))
+    assert res.callback_error == "RuntimeError: scrape failed"
+    assert any(r.ok for r in res.records)

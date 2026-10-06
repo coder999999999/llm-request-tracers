@@ -55,12 +55,36 @@ RT.addSteps('ollama', {
 });
 `;
 
+// Synthetic bench results and pair annotations, injected the same way as the fake
+// engine, so the charts can be checked before real results exist. Not measurements.
+const FAKE_BENCH = {
+  'llama-cpp': `RT.registerBench({ id: 'llama-cpp', run: { model: 'Test model', gpu: 'Test GPU' },
+  levels: [1, 2, 4, 8, 16, 32, 64].map(function (u, i) { return { users: u, tok_s: { median: 40 + i * 70, min: 38 + i * 70, max: 44 + i * 70 }, ttft_ms: { median: 60 }, prefill_ms: { median: 38 } }; }),
+  reuse: { cold_ttft_ms: { median: 1200 }, warm_ttft_ms: { median: 90 } },
+  kvFull: [{ max_tokens: 256, tok_s: { median: 480 }, failed: 0 }, { max_tokens: 1024, tok_s: { median: 300 }, kv_retries: 7, failed: 2 }] });`,
+  vllm: `RT.registerBench({ id: 'vllm', run: { model: 'Test model', gpu: 'Test GPU' },
+  levels: [1, 2, 4, 8, 16, 32, 64].map(function (u, i) { return { users: u, tok_s: { median: 42 + i * 380, min: 40 + i * 380, max: 46 + i * 380 }, ttft_ms: { median: 55 }, queue_ms: { median: 4 }, prefill_ms: { median: 40 } }; }),
+  reuse: { cold_ttft_ms: { median: 1100 }, warm_ttft_ms: { median: 40 } },
+  kvFull: [{ max_tokens: 256, tok_s: { median: 2500 } }, { max_tokens: 1024, tok_s: { median: 2100 }, preemptions: 12 }] });`
+};
+const FAKE_PAIR = `
+(function () {
+  var p = RT.pairs['llama-cpp--vllm'];
+  p.verdict = { a: ['Run it on one laptop'], b: ['Serve many people at once'] };
+  p.annotations = {
+    q1: [{ x: 64, metric: 'tok_s', kind: 'ratio', text: '{v}× at 64 users' }],
+    q2: [{ source: 'reuse', metric: 'warm_ttft_ms', kind: 'ratio', text: 'Repeat takes {v}× the llama.cpp time' }],
+    q4: [{ source: 'kvFull', x: 1024, metric: 'tok_s', kind: 'ratio', text: '{v}× at 1,024 tokens' }]
+  };
+})();
+`;
+
 const failures = [];
 const fail = (where, msg) => failures.push(`${where}: ${msg}`);
 let checks = 0;
 function ok(cond, where, msg) { checks++; if (!cond) fail(where, msg); }
 
-async function openPage(browser, { width, url, fake }) {
+async function openPage(browser, { width, url, fake, bench }) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
   const problems = [];
@@ -78,6 +102,11 @@ async function openPage(browser, { width, url, fake }) {
     if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(u)) {
       // Keep the run offline-safe and deterministic: system fonts only.
       req.respond({ status: 200, contentType: 'text/css', body: '' });
+    } else if (bench && /\/data\/bench\/(llama-cpp|vllm)\.js(\?|$)/.test(u)) {
+      req.respond({ status: 200, contentType: MIME['.js'], body: FAKE_BENCH[/\/bench\/([^./]+)\.js/.exec(u)[1]] });
+    } else if (bench && /\/data\/pairs\/llama-cpp--vllm\.js(\?|$)/.test(u)) {
+      const body = fs.readFileSync(path.join(root, 'data', 'pairs', 'llama-cpp--vllm.js'), 'utf8') + FAKE_PAIR;
+      req.respond({ status: 200, contentType: MIME['.js'], body });
     } else if (fake && /\/data\/compare\.js(\?|$)/.test(u)) {
       const body = fs.readFileSync(path.join(root, 'data', 'compare.js'), 'utf8') + FAKE_ENGINE;
       req.respond({ status: 200, contentType: MIME['.js'], body });
@@ -101,6 +130,7 @@ async function layoutChecks(browser, base, mode) {
       links: [...document.querySelectorAll('.qs a')].map(a => a.getAttribute('href')),
       picker: document.querySelectorAll('#picker select').length,
       text: document.body.innerText,
+      h1: document.querySelector('.hero h1').textContent.trim(),
       staticQs: [...document.querySelectorAll('.qs b')].map(b => b.textContent),
       dataQs: window.RT.compare.questions.map(q => q.text),
     }));
@@ -111,7 +141,18 @@ async function layoutChecks(browser, base, mode) {
     ok(m.rows >= 5, where, `expected 4 stage rows and a General row, found ${m.rows}`);
     ok(JSON.stringify(m.links) === JSON.stringify(['#q1', '#q2', '#q3', '#q4']), where, `question links: ${m.links}`);
     ok(m.picker === 0, where, 'picker should not appear with two engines');
+    ok(m.h1.endsWith('vLLM?'), where, 'H1 should end with a question mark, got "' + m.h1 + '"');
     for (const p of problems) fail(where, p);
+
+    // Text inside the chapter graphics must render at 11px or more. On a phone the
+    // charts and the boundary diagram are redrawn 380 wide so this holds at 390.
+    const tiny = await page.evaluate(() => [...document.querySelectorAll('.chapter svg text')]
+      .filter(t => t.getClientRects().length > 0)
+      .map(t => ({ text: t.textContent.trim().slice(0, 40), px: parseFloat(getComputedStyle(t).fontSize) * t.getScreenCTM().a }))
+      .filter(x => x.px < 11));
+    ok(tiny.length === 0, where, 'svg text under 11px: ' + tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));
+    const vb = await page.evaluate(() => document.querySelector('#q3 figure svg').getAttribute('viewBox'));
+    ok(vb === (width < 600 ? '0 0 380 ' : '0 0 760 ') + vb.split(' ')[3], where, 'boundary diagram viewBox is ' + vb);
 
     // The pinned track is vertical at 1100px and up, a strip per chapter below.
     const vis = await page.evaluate(() => {
@@ -186,6 +227,85 @@ async function interactionChecks(page, where) {
   await page.evaluate(() => document.getElementById('player').close());
 }
 
+// With bench results and pair annotations present, every chart draws and its text
+// stays at 11px or more on a phone. Both URL orders show the same verdict.
+async function chartChecks(browser, base) {
+  for (const width of [390, 1440]) {
+    const where = 'http charts ' + width;
+    const { page, problems } = await openPage(browser, { width, url: base + '/index.html', bench: true });
+    const m = await page.evaluate(() => ({
+      figures: [...document.querySelectorAll('#chapters figure svg')].map(s => s.getAttribute('viewBox')),
+      empty: document.querySelectorAll('#chapters figure .empty').length,
+      text: document.getElementById('chapters').innerText,
+      verdict: document.getElementById('verdict').innerText,
+      sw: document.documentElement.scrollWidth, iw: window.innerWidth,
+      wide: [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && e.getClientRects().length).slice(0, 4)
+        .map(e => e.tagName + '.' + e.className + ' ' + Math.round(e.getBoundingClientRect().right)),
+      tiny: [...document.querySelectorAll('.chapter svg text')].filter(t => t.getClientRects().length > 0)
+        .map(t => ({ text: t.textContent.trim().slice(0, 40), px: parseFloat(getComputedStyle(t).fontSize) * t.getScreenCTM().a }))
+        .filter(x => x.px < 11),
+    }));
+    ok(m.figures.length === 4 && m.empty === 0, where, 'expected four drawn figures, got ' + m.figures.length + ' (empty ' + m.empty + ')');
+    ok(m.figures.every(v => v.startsWith(width < 600 ? '0 0 380 ' : '0 0 760 ')), where, 'viewBoxes ' + m.figures.join(' | '));
+    ok(m.text.includes('× at 64 users'), where, 'throughput annotation missing');
+    ok(m.text.includes('Repeat takes') && m.text.includes('× at 1,024 tokens'), where, 'reuse or kvFull annotation missing');
+    ok(m.verdict.includes('Reach for llama.cpp if'), where, 'verdict missing');
+    ok(m.tiny.length === 0, where, 'svg text under 11px: ' + m.tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));
+    ok(m.sw <= m.iw, where, 'horizontal overflow (' + m.sw + ' > ' + m.iw + '): ' + m.wide.join('; '));
+    for (const p of problems) fail(where, p);
+    await page.close();
+  }
+  const where = 'http reversed pair with verdict';
+  const grab = async (query) => {
+    const { page } = await openPage(browser, { width: 1440, url: base + '/index.html' + query, bench: true });
+    const out = await page.evaluate(() => document.getElementById('verdict').innerHTML + document.getElementById('chapters').innerHTML);
+    await page.close();
+    return out;
+  };
+  ok(await grab('?a=llama-cpp&b=vllm') === await grab('?a=vllm&b=llama-cpp'), where, 'verdict or annotations flip when the URL pair is reversed');
+}
+
+// The URL picks the pair; the pair file fixes the order, so naming it the other way
+// round must render exactly the same page.
+async function reversedPairChecks(browser, base) {
+  const where = 'http reversed pair';
+  const grab = async (query) => {
+    const { page, problems } = await openPage(browser, { width: 1440, url: base + '/index.html' + query });
+    const out = await page.evaluate(() => ({
+      h1: document.querySelector('.hero h1').textContent,
+      verdict: document.getElementById('verdict').innerHTML,
+      chapters: document.getElementById('chapters').innerHTML,
+      rows: document.getElementById('every-stage-rows').innerHTML,
+    }));
+    for (const p of problems) fail(where, p);
+    await page.close();
+    return out;
+  };
+  const normal = await grab('?a=llama-cpp&b=vllm');
+  const reversed = await grab('?a=vllm&b=llama-cpp');
+  for (const key of Object.keys(normal)) ok(normal[key] === reversed[key], where, key + ' differs when the URL names the pair the other way round');
+  ok(reversed.h1.indexOf('llama.cpp') >= 0 && reversed.h1.indexOf('llama.cpp') < reversed.h1.indexOf('vLLM'), where, 'H1 should keep the pair file order, got ' + reversed.h1);
+}
+
+// Crossing the 600px line redraws the boundary diagram at the other width, and
+// keeps a code path the reader had opened.
+async function resizeChecks(browser, base) {
+  const where = 'http resize';
+  const { page, problems } = await openPage(browser, { width: 1440, url: base + '/index.html' });
+  const vb = () => page.evaluate(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2]);
+  ok(await vb() === '760', where, 'wide viewBox should be 760');
+  await page.evaluate(() => { document.querySelector('#q3 .path details').open = true; });
+  await page.setViewport({ width: 390, height: 900, deviceScaleFactor: 1 });
+  await page.waitForFunction(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2] === '380', { timeout: 3000 }).catch(() => {});
+  ok(await vb() === '380', where, 'narrow viewBox should be 380 after resizing to 390');
+  ok(await page.evaluate(() => document.querySelector('#q3 .path details').open), where, 'an opened code path should stay open');
+  await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+  await page.waitForFunction(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2] === '760', { timeout: 3000 }).catch(() => {});
+  ok(await vb() === '760', where, 'wide viewBox should return to 760');
+  for (const p of problems) fail(where, p);
+  await page.close();
+}
+
 async function fakeEngineChecks(browser, base) {
   const where = 'http fake engine';
   const { page, problems } = await openPage(browser, { width: 1440, url: base + '/index.html?a=ollama&b=vllm', fake: true });
@@ -220,6 +340,9 @@ try {
   const file_ = await layoutChecks(browser, base, 'file');
   for (const w of WIDTHS) ok(http_[w] === file_[w], `width ${w}`, 'body text differs between http and file://');
   await fakeEngineChecks(browser, base);
+  await reversedPairChecks(browser, base);
+  await chartChecks(browser, base);
+  await resizeChecks(browser, base);
 } catch (e) {
   fail('run', e && e.stack || String(e));
 } finally {

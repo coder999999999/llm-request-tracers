@@ -30,6 +30,8 @@
   function isNum(n) { return typeof n === 'number' && isFinite(n); }
   function col(c) { return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? String(c) : INK; }
   function r1(n) { return Math.round(n * 10) / 10; }
+  // Engine colour for small text: darkened until it reads at 4.5 to 1. Lines, dots and bars keep col().
+  function tcol(c) { return RTU.textColor(col(c)); }
   function pair(ctx) { return [ctx.a, ctx.b]; }
   function stagesOf(ctx) { return (ctx.compare && ctx.compare.stages) || []; }
   function stageById(ctx, id) {
@@ -46,7 +48,7 @@
   function empty() { return '<p class="empty">' + EMPTY + '</p>'; }
   function none() { return '<span class="none">' + NOT_COVERED + '</span>'; }
   function heading(engine, extra) {
-    return '<h4 style="color:' + col(engine.color) + '">' + esc(engine.name) +
+    return '<h4 style="color:' + tcol(engine.color) + '">' + esc(engine.name) +
       (extra ? ' <em>' + esc(extra) + '</em>' : '') + '</h4>';
   }
   function srcLink(engine, file, line) {
@@ -56,6 +58,21 @@
   function figure(title, sub, inner) {
     return '<figure><div class="fig-h"><h3>' + esc(title) + '</h3>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div>' + inner + '</figure>';
   }
+
+  // ---- verdict --------------------------------------------------------
+
+  // "Reach for X if" lists from the pair file. Empty until the pair file has them.
+  RTR.verdict = function (ctx) {
+    var v = ctx.pair && ctx.pair.verdict;
+    if (!v || !((v.a && v.a.length) || (v.b && v.b.length))) return '';
+    var html = '';
+    [[ctx.a, v.a], [ctx.b, v.b]].forEach(function (p) {
+      if (!p[1] || !p[1].length) return;
+      html += '<div><h3 style="color:' + tcol(p[0].color) + '">Reach for ' + esc(p[0].name) + ' if</h3><ul>' +
+        p[1].map(function (s) { return '<li>' + txt(s) + '</li>'; }).join('') + '</ul></div>';
+    });
+    return html;
+  };
 
   // ---- code paths -------------------------------------------------------
 
@@ -118,34 +135,39 @@
 
   // ---- stage-time bars --------------------------------------------------
 
-  var STAGE_BAR = { wait: 'Time spent waiting for a turn', think: 'Time spent reading the prompt before the first token' };
-  var NOTE = { reported: 'reported by the server', derived: 'derived', 'queue + overhead': 'queue + overhead' };
+  // Both rows compare the two engines on the same definition. Think is prefill,
+  // reported by the server on both. Before prefill is first-token time minus
+  // prefill on both (queue and overhead, derived); an engine that also reports
+  // its own queue time gets that as a note under its bar.
+  var STAGE_BAR = {
+    wait: { title: 'Before prefill', note: 'queue and overhead, derived' },
+    think: { title: 'Think (prefill)', note: 'reported by the server' }
+  };
 
-  // The difference between the two engines for one stage, from bench numbers only.
-  // Within 10% of the larger value counts as even.
+  // The difference between the two engines for one row, from bench numbers only.
+  // Under 10% of the larger value counts as even.
   function gapText(ctx, msA, msB) {
     var diff = Math.abs(msA - msB);
-    if (diff <= 0.1 * Math.max(msA, msB)) return 'About even';
+    if (diff < 0.1 * Math.max(msA, msB) || diff === 0) return 'About even';
     return (msA < msB ? ctx.a : ctx.b).name + ' ' + RTU.fmtMs(diff) + ' faster';
   }
 
   RTR.stageBar = function (stageId, ctx) {
-    if (!STAGE_BAR[stageId]) return '';
+    var spec = STAGE_BAR[stageId];
+    if (!spec) return '';
     var blocks = '';
     [1, 32].forEach(function (users) {
       var ta = RTU.stageTimes(benchOf(ctx, ctx.a), users), tb = RTU.stageTimes(benchOf(ctx, ctx.b), users);
       if (!ta || !tb || !ta[stageId] || !tb[stageId]) return;
       var max = Math.max(ta[stageId].ms, tb[stageId].ms, 1);
-      var notes = [[ctx.a, ta], [ctx.b, tb]].map(function (p) {
-        return p[0].name + ': ' + (NOTE[p[1][stageId].note] || p[1][stageId].note);
-      }).join('; ');
-      blocks += '<div class="stagebar"><div class="hd"><span>' + esc(STAGE_BAR[stageId] + ', at ' + users + (users === 1 ? ' user' : ' users')) +
-        '</span><span>' + esc(notes) + '</span></div>';
+      blocks += '<div class="stagebar"><div class="hd"><span>' + esc(spec.title + ', at ' + users + (users === 1 ? ' user' : ' users')) +
+        '</span><span>' + esc(spec.note) + '</span></div>';
       [[ctx.a, ta], [ctx.b, tb]].forEach(function (p) {
-        var ms = p[1][stageId].ms;
-        blocks += '<span class="lbl" style="color:' + col(p[0].color) + '">' + esc(p[0].name) + '</span>' +
-          '<span class="track"><i style="width:' + r1(Math.min(100, Math.max(1, ms / max * 100))) + '%;background:' + col(p[0].color) + '"></i></span>' +
-          '<span class="v">' + esc(RTU.fmtMs(ms)) + '</span>';
+        var st = p[1][stageId];
+        blocks += '<span class="lbl" style="color:' + tcol(p[0].color) + '">' + esc(p[0].name) + '</span>' +
+          '<span class="track"><i style="width:' + r1(Math.min(100, Math.max(1, st.ms / max * 100))) + '%;background:' + col(p[0].color) + '"></i></span>' +
+          '<span class="v">' + esc(RTU.fmtMs(st.ms)) + '</span>';
+        if (isNum(st.queue)) blocks += '<span class="note">' + esc('of which queue: ' + RTU.fmtMs(st.queue) + ' (reported)') + '</span>';
       });
       blocks += '<span class="gap">' + esc(gapText(ctx, ta[stageId].ms, tb[stageId].ms)) + '</span></div>';
     });
@@ -183,17 +205,27 @@
     });
   }
 
+  // Annotations for one chart. The pair file lists them under the question id;
+  // each names a source (levels by default, reuse, kvFull) and only the chart
+  // reading that source draws it. A spec whose bench numbers are missing is skipped.
+  function annotationsFor(q, ctx, source) {
+    var specs = (ctx.pair && ctx.pair.annotations && ctx.pair.annotations[q.id]) || [];
+    return specs.filter(function (sp) { return sp && (sp.source || 'levels') === source; })
+      .map(function (sp) { return RTU.annotate(sp, ctx); }).filter(Boolean);
+  }
+
+  // Chart width in viewBox units: a phone column gets 380 so text stays readable.
+  function chartWidth(ctx) { return ctx.narrow ? 380 : 760; }
+
   function throughput(q, ctx) {
     var series = levelSeries(ctx, 'tok_s');
     if (!series[0].points.length || !series[1].points.length) return figure('Output tokens per second', '', empty());
     var xs = [];
     series.forEach(function (s) { s.points.forEach(function (p) { if (xs.indexOf(p[0]) < 0) xs.push(p[0]); }); });
     xs.sort(function (a, b) { return a - b; });
-    var specs = (ctx.pair && ctx.pair.annotations && ctx.pair.annotations[q.id]) || [];
-    var anns = specs.map(function (sp) { return RTU.annotate(sp, ctx); }).filter(Boolean);
     var chart = RTC.lineChart({
-      series: series, xTicks: xs, xLabel: 'concurrent users', yLabel: 'tokens per second',
-      annotations: anns, ariaLabel: summary('Output tokens per second by concurrent users', 'users', series)
+      series: series, xTicks: xs, xLabel: 'concurrent users', yLabel: 'tokens per second', width: chartWidth(ctx),
+      annotations: annotationsFor(q, ctx, 'levels'), ariaLabel: summary('Output tokens per second by concurrent users', 'users', series)
     });
     return figure('Output tokens per second', runSub(ctx), chart);
   }
@@ -210,9 +242,13 @@
     function group(label, key) {
       return { label: label, values: vals.map(function (v) { return { label: v.e.name, color: v.e.color, v: v[key] }; }) };
     }
+    var GROUP_OF = { cold_ttft_ms: 0, warm_ttft_ms: 1 };
+    var anns = annotationsFor(q, ctx, 'reuse').filter(function (a) { return GROUP_OF[a.metric] !== undefined; })
+      .map(function (a) { return { group: GROUP_OF[a.metric], text: a.text }; });
     var chart = RTC.barPairs({
       groups: [group('First message', 'cold'), group('Repeat with the same system prompt', 'warm')],
-      unit: 'ms', ariaLabel: 'Time to first token for a first message and for a repeat with the same system prompt'
+      unit: 'ms', width: chartWidth(ctx), annotations: anns,
+      ariaLabel: 'Time to first token for a first message and for a repeat with the same system prompt'
     });
     return figure('Time to first token', runSub(ctx), chart);
   }
@@ -226,23 +262,25 @@
     var series = pair(ctx).map(function (e, i) {
       return {
         label: e.name, color: e.color,
-        points: data[i].filter(function (r) { return isNum(r.tok_s); }).map(function (r) { return [r.max_tokens, r.tok_s]; })
+        points: data[i].filter(function (r) { return med(r.tok_s) !== null; }).map(function (r) { return [r.max_tokens, med(r.tok_s)]; })
       };
     });
     var xs = [];
     data.forEach(function (d) { d.forEach(function (r) { if (xs.indexOf(r.max_tokens) < 0) xs.push(r.max_tokens); }); });
     xs.sort(function (a, b) { return a - b; });
     var chart = RTC.lineChart({
-      series: series, xTicks: xs, xLabel: 'max tokens per reply', yLabel: 'tokens per second', xUnit: 'max tokens',
+      series: series, xTicks: xs, xLabel: 'max tokens per reply', yLabel: 'tokens per second', xUnit: 'max tokens', width: chartWidth(ctx),
+      annotations: annotationsFor(q, ctx, 'kvFull'),
       ariaLabel: summary('Output tokens per second as replies get longer', 'max tokens', series)
     });
     function cell(rows, n) {
       var r = rows.filter(function (x) { return x.max_tokens === n; })[0];
       if (!r) return none();
       var parts = [];
-      if (isNum(r.failed)) parts.push('Failed requests ' + RTU.fmtNum(r.failed));
-      if (isNum(r.preemptions)) parts.push('Preemptions ' + RTU.fmtNum(r.preemptions));
-      if (isNum(r.kv_retries)) parts.push('Decode retries ' + RTU.fmtNum(r.kv_retries));
+      var failed = med(r.failed), preempt = med(r.preemptions), retries = med(r.kv_retries);
+      if (failed !== null) parts.push('Failed requests ' + RTU.fmtNum(failed));
+      if (preempt !== null) parts.push('Preemptions ' + RTU.fmtNum(preempt));
+      if (retries !== null) parts.push('Decode retries ' + RTU.fmtNum(retries));
       return parts.length ? esc(parts.join(', ')) : none();
     }
     var table = '<div class="facts"><div class="r h"><span></span><span>' + esc(ctx.a.name) + '</span><span>' + esc(ctx.b.name) + '</span></div>';
@@ -253,48 +291,112 @@
     return figure('Throughput as the KV cache fills', runSub(ctx), chart + table);
   }
 
+  // Breaks a sentence at spaces into lines of at most `max` characters.
+  function wrap(text, max) {
+    var lines = [], cur = '';
+    String(text).split(/\s+/).forEach(function (w) {
+      if (cur && (cur + ' ' + w).length > max) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w;
+    });
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
   // Two lanes, one per engine. Stage columns are shared; each engine's steps are
   // spread across its columns and each hop is placed at the step where it happens.
+  // On a narrow column (ctx.narrow) the lanes are drawn at 380 wide: each lane
+  // repeats the stage names, hops get a number on the lane, and their sentences
+  // are listed below it, wrapped, so nothing needs text smaller than 12.
   function boundaries(q, ctx) {
-    var W = 760, stages = stagesOf(ctx), n = Math.max(stages.length, 1), cw = W / n;
-    var laneTop = [52, 172];
-    var s = '<svg viewBox="0 0 ' + W + ' 268" width="100%" role="group" aria-label="Where each engine hands the request to another thread or process" ' +
-      'font-family="' + FONT + '" font-size="14" fill="' + INK2 + '" style="display:block;max-width:100%;height:auto">';
-    stages.forEach(function (st, i) {
-      s += '<text x="' + r1(i * cw + 8) + '" y="16" fill="' + INK + '" font-weight="600">' + esc(st.name) + '</text>';
-      if (i) s += '<line x1="' + r1(i * cw) + '" x2="' + r1(i * cw) + '" y1="28" y2="268" stroke="' + RULE + '" stroke-width="1"/>';
-    });
-    pair(ctx).forEach(function (e, li) {
-      var c = col(e.color), labelY = laneTop[li], lineY = labelY + 24;
-      s += '<text x="0" y="' + labelY + '" fill="' + c + '" font-weight="600" font-size="15" paint-order="stroke" stroke="' + BG + '" stroke-width="4">' + esc(e.name) + '</text>';
+    var narrow = !!ctx.narrow;
+    var W = narrow ? 380 : 760, FS = narrow ? 13 : 14, CW = narrow ? 6.8 : 7.2, LH = 18;
+    var stages = stagesOf(ctx), n = Math.max(stages.length, 1), cw = W / n;
+    var halo = ' paint-order="stroke" stroke="' + BG + '" stroke-width="4" stroke-linejoin="round"';
+    var body = '', seps = [], y = narrow ? 24 : 52;
+    if (!narrow) {
+      stages.forEach(function (st, i) {
+        body += '<text x="' + r1(i * cw + 8) + '" y="16" fill="' + INK + '" font-weight="600">' + esc(st.name) + '</text>';
+      });
+    }
+    pair(ctx).forEach(function (e) {
+      var c = col(e.color), labelY = y;
+      body += '<text x="0" y="' + labelY + '" fill="' + tcol(e.color) + '" font-weight="600" font-size="15"' + halo + '>' + esc(e.name) + '</text>';
+      var headY = labelY + 22;
+      var lineY = narrow ? labelY + 44 : labelY + 24;
+      if (narrow) {
+        stages.forEach(function (st, i) {
+          body += '<text x="' + r1(i * cw + 6) + '" y="' + headY + '" fill="' + INK + '" font-weight="600">' + esc(st.name) + '</text>';
+        });
+      }
       var total = 0;
       stages.forEach(function (st) { total += stepsOf(e, st.id).length; });
-      if (!total) { s += '<text x="0" y="' + (lineY + 4) + '">' + NOT_COVERED + '</text>'; return; }
-      s += '<line x1="0" x2="' + W + '" y1="' + lineY + '" y2="' + lineY + '" stroke="' + c + '" stroke-width="3"/>';
+      if (!total) {
+        body += '<text x="0" y="' + (lineY + 4) + '">' + NOT_COVERED + '</text>';
+        y = lineY + 56;
+        return;
+      }
+      body += '<line x1="0" x2="' + W + '" y1="' + lineY + '" y2="' + lineY + '" stroke="' + c + '" stroke-width="3"/>';
       var hops = [];
       stages.forEach(function (st, i) {
         var list = stepsOf(e, st.id);
         list.forEach(function (stp, j) {
           var x = r1(i * cw + 8 + (j + 0.5) / list.length * (cw - 16));
-          s += '<circle cx="' + x + '" cy="' + lineY + '" r="3" fill="' + BG + '" stroke="' + c + '" stroke-width="2"/>';
+          body += '<circle cx="' + x + '" cy="' + lineY + '" r="3" fill="' + BG + '" stroke="' + c + '" stroke-width="2"/>';
           if (stp.hop && stp.hopText) hops.push({ x: x, text: stp.hopText });
         });
       });
-      var rows = [[], []];
-      hops.forEach(function (hp) {
-        var tw = hp.text.length * 7.2;
-        var atEnd = hp.x + 8 + tw > W - 4;
-        var x0 = atEnd ? hp.x - 8 - tw : hp.x + 8, x1 = x0 + tw;
-        var row = 0;
-        while (row < 1 && rows[row].some(function (iv) { return x0 < iv[1] + 12 && x1 > iv[0] - 12; })) row++;
-        rows[row].push([x0, x1]);
-        s += '<line x1="' + hp.x + '" x2="' + hp.x + '" y1="' + (lineY - 14) + '" y2="' + (lineY + 14 + row * 22) + '" stroke="' + INK + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
-        s += '<text x="' + r1(atEnd ? hp.x - 8 : hp.x + 8) + '" y="' + (lineY + 30 + row * 22) + '" text-anchor="' + (atEnd ? 'end' : 'start') + '">' + txt(hp.text) + '</text>';
+      // Place every hop sentence: wide, beside its marker (right if it fits, else left)
+      // in the first row with room; narrow, one row each in a list under the lane.
+      var rows = [];
+      hops.forEach(function (hp, k) {
+        var place;
+        if (narrow) {
+          var nl = wrap(hp.text, 46);
+          place = { hp: hp, lines: nl, x0: 18, anchor: 'start', tx: 18, row: k };
+          rows[k] = { lines: nl.length, spans: [] };
+        } else {
+          var right = W - 4 - (hp.x + 8), left = hp.x - 8 - 4;
+          var lines = wrap(hp.text, Math.max(24, Math.min(40, Math.floor(Math.max(right, left) / CW))));
+          var tw = Math.max.apply(null, lines.map(function (l) { return l.length; })) * CW;
+          var atEnd = !(tw <= right) && left > right;
+          var x0 = atEnd ? hp.x - 8 - tw : hp.x + 8;
+          var row = 0;
+          while (rows[row] && rows[row].spans.some(function (iv) { return x0 < iv[1] + 12 && x0 + tw > iv[0] - 12; })) row++;
+          if (!rows[row]) rows[row] = { lines: 0, spans: [] };
+          rows[row].spans.push([x0, x0 + tw]);
+          rows[row].lines = Math.max(rows[row].lines, lines.length);
+          place = { hp: hp, lines: lines, anchor: atEnd ? 'end' : 'start', tx: atEnd ? hp.x - 8 : hp.x + 8, row: row };
+        }
+        hops[k] = place;
       });
+      var top = lineY + (narrow ? 44 : 30);
+      rows.forEach(function (r) { r.y = top; top += r.lines * LH + (narrow ? 8 : 4); });
+      hops.forEach(function (pl, k) {
+        var ry = rows[pl.row].y;
+        if (narrow) {
+          body += '<line x1="' + pl.hp.x + '" x2="' + pl.hp.x + '" y1="' + (lineY - 12) + '" y2="' + (lineY + 12) + '" stroke="' + INK + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
+          body += '<text x="' + pl.hp.x + '" y="' + (lineY + 28) + '" text-anchor="middle" fill="' + INK + '" font-weight="600">' + (k + 1) + '</text>';
+          body += '<text x="0" y="' + ry + '" fill="' + INK + '" font-weight="600">' + (k + 1) + '</text>';
+        } else {
+          body += '<line x1="' + pl.hp.x + '" x2="' + pl.hp.x + '" y1="' + (lineY - 14) + '" y2="' + (ry - 16) + '" stroke="' + INK + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
+        }
+        body += '<text x="' + r1(pl.tx) + '" y="' + ry + '" text-anchor="' + pl.anchor + '"' + halo + '>' +
+          pl.lines.map(function (l, li) { return '<tspan x="' + r1(pl.tx) + '" y="' + (ry + li * LH) + '">' + txt(l) + '</tspan>'; }).join('') + '</text>';
+      });
+      var bottom = rows.length ? top : lineY + 16;
+      if (narrow) seps.push([labelY + 6, lineY + 16]);
+      else seps.push(null);
+      y = bottom + (narrow ? 24 : 36);
     });
-    s += '</svg>';
+    var H = Math.max(y - (narrow ? 8 : 20), 40);
+    var lines = '';
+    for (var i = 1; i < stages.length; i++) {
+      if (narrow) seps.forEach(function (sp) { if (sp) lines += '<line x1="' + r1(i * cw) + '" x2="' + r1(i * cw) + '" y1="' + sp[0] + '" y2="' + sp[1] + '" stroke="' + RULE + '" stroke-width="1"/>'; });
+      else lines += '<line x1="' + r1(i * cw) + '" x2="' + r1(i * cw) + '" y1="28" y2="' + H + '" stroke="' + RULE + '" stroke-width="1"/>';
+    }
+    var s = '<svg viewBox="0 0 ' + W + ' ' + Math.ceil(H) + '" width="100%" role="group" aria-label="Where each engine hands the request to another thread or process" ' +
+      'font-family="' + FONT + '" font-size="' + FS + '" fill="' + INK2 + '" style="display:block;max-width:100%;height:auto">' + lines + body + '</svg>';
     var cap = '<figcaption>' + pair(ctx).map(function (e) {
-      return '<b style="color:' + col(e.color) + '">' + esc(e.name) + '</b>: ' + esc(e.shape);
+      return '<b style="color:' + tcol(e.color) + '">' + esc(e.name) + '</b>: ' + esc(e.shape);
     }).join(' ') + '</figcaption>';
     return '<figure><div class="fig-h"><h3>Where the request changes thread or process</h3></div>' + s + cap + '</figure>';
   }
@@ -380,9 +482,9 @@
     var horizontal = !!(opts && opts.horizontal);
     var engines = pair(ctx);
     var w, h, laneAt, stagePos;
-    // Strip geometry: a lane-name gutter, then one column per stage. Kept narrow so
-    // the text stays near 12px when the strip is scaled into a 358px phone column.
-    var x0 = 80, cw = 88;
+    // Strip geometry: a lane-name gutter, then one column per stage. The viewBox is
+    // about as wide as a 358px phone column (376), so text keeps its size when it scales.
+    var x0 = 72, cw = 76;
     if (horizontal) {
       w = x0 + n * cw; h = 168;
       laneAt = function (i) { return 52 + i * 48; };
@@ -399,10 +501,10 @@
     engines.forEach(function (e, i) {
       var c = col(e.color), p = laneAt(i);
       if (horizontal) {
-        s += '<text x="0" y="' + (p + 5) + '" font-weight="600" font-size="14" fill="' + c + '">' + esc(e.name) + '</text>';
+        s += '<text x="0" y="' + (p + 5) + '" font-weight="600" font-size="13" fill="' + tcol(e.color) + '">' + esc(e.name) + '</text>';
         s += '<line x1="' + x0 + '" x2="' + (w - 8) + '" y1="' + p + '" y2="' + p + '" stroke="' + c + '" stroke-width="2"/>';
       } else {
-        s += '<text x="' + p + '" y="14" text-anchor="middle" font-weight="600" font-size="14" fill="' + c + '">' + esc(e.name) + '</text>';
+        s += '<text x="' + p + '" y="14" text-anchor="middle" font-weight="600" font-size="14" fill="' + tcol(e.color) + '">' + esc(e.name) + '</text>';
         s += '<line x1="' + p + '" x2="' + p + '" y1="32" y2="' + (h - 36) + '" stroke="' + c + '" stroke-width="2"/>';
       }
     });
@@ -420,14 +522,14 @@
         var list = stepsOf(e, st.id), lp = laneAt(li);
         var cx = horizontal ? sp : lp, cy = horizontal ? lp : sp;
         s += '<circle class="rtr-dot" cx="' + cx + '" cy="' + cy + '" r="4" stroke="' + col(e.color) + '" stroke-width="2" style="--c:' + col(e.color) + '"/>';
-        s += '<text x="' + cx + '" y="' + (cy + 24) + '" text-anchor="middle" font-size="12" fill="' + INK3 + '" paint-order="stroke" stroke="' + BG + '" stroke-width="4">' + list.length + (list.length === 1 ? ' step' : ' steps') + '</text>';
+        s += '<text x="' + cx + '" y="' + (cy + 24) + '" text-anchor="middle" font-size="13" fill="' + INK3 + '" paint-order="stroke" stroke="' + BG + '" stroke-width="4">' + list.length + (list.length === 1 ? ' step' : ' steps') + '</text>';
         if (list.some(function (x) { return x.hop; })) {
           s += '<line x1="' + (cx - 14) + '" x2="' + (cx + 14) + '" y1="' + (cy + 36) + '" y2="' + (cy + 36) + '" stroke="' + INK + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
         }
       });
       s += '</g>';
     });
-    s += '<text x="' + (horizontal ? 0 : w / 2) + '" y="' + (h - 4) + '" text-anchor="' + (horizontal ? 'start' : 'middle') + '" font-size="12" fill="' + INK3 + '">dashed: crosses a thread or process</text>';
+    s += '<text x="' + (horizontal ? 0 : w / 2) + '" y="' + (h - 4) + '" text-anchor="' + (horizontal ? 'start' : 'middle') + '" font-size="13" fill="' + INK3 + '">dashed: crosses a thread or process</text>';
     return s + '</svg>';
   };
 })();

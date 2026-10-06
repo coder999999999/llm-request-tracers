@@ -67,8 +67,10 @@ test('kvFull evidence charts throughput and lists failures and retries', () => {
 
 test('boundary diagram is drawn from step data, both lanes', () => {
   const html = RTR.evidence(q3, ctx);
+  // long sentences wrap onto several lines, so compare the text with the markup removed
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   for (const e of [llama, vllm]) for (const s of Object.values(e.steps).flat()) {
-    if (s.hopText) assert.ok(html.includes(s.hopText), s.hopText);
+    if (s.hopText) assert.ok(text.includes(s.hopText), s.hopText);
   }
   assert.match(html, />llama\.cpp</);
   assert.match(html, />vLLM</);
@@ -168,25 +170,55 @@ test('an unset answer in an existing pair renders no answer paragraph', () => {
 test('last chapter has no Next question link', () =>
   assert.doesNotMatch(RTR.chapter(q4, 3, ctx), /Next question/));
 
-test('chapter stage bar uses reported numbers and labels how each was measured', () => {
+test('chapter stage bar compares like with like and labels how each was measured', () => {
   const html = RTR.chapter(q1, 0, ctx);
   assert.match(html, /class="stagebar"/);
-  assert.match(html, />4 ms</);
+  assert.match(html, />15 ms</);
   assert.match(html, />22 ms</);
-  assert.match(html, /queue \+ overhead/);
+  assert.doesNotMatch(html, />4 ms</);
+  assert.match(html, /Before prefill/);
+  assert.match(html, /queue and overhead, derived/);
   assert.match(html, /at 32 users/);
 });
 
-test('stage row prints the gap between the engines, from bench data', () => {
+test('vLLM bar carries its reported queue time as a note, llama.cpp has none', () => {
+  const html = RTR.stageRow('wait', ctx);
+  assert.equal((html.match(/of which queue: 4 ms \(reported\)/g) || []).length, 1);
+  const bar = html.slice(html.indexOf('class="stagebar"'));
+  assert.ok(bar.indexOf('of which queue') > bar.indexOf('>vLLM<'));
+  assert.doesNotMatch(bar.slice(0, bar.indexOf('>vLLM<')), /of which queue/);
+});
+
+test('think row is labelled prefill and reported on both', () => {
+  const html = RTR.stageRow('think', ctx);
+  assert.match(html, /Think \(prefill\)/);
+  assert.match(html, />40 ms</);
+  assert.match(html, />38 ms</);
+  assert.doesNotMatch(html, /of which queue/);
+});
+
+test('stage row prints the gap per row, between like-for-like values only', () => {
   const wait = RTR.stageRow('wait', ctx);
-  assert.match(wait, /<span class="gap">vLLM 18 ms faster<\/span>/);
+  assert.match(wait, /<span class="gap">vLLM 7 ms faster<\/span>/);
+  assert.doesNotMatch(wait, /18 ms/);
   const think = RTR.stageRow('think', ctx);
   assert.match(think, /<span class="gap">About even<\/span>/);
 });
 
+test('about even means under 10% of the larger value', () => {
+  const lvl = (prefill) => ({ id: 'x', levels: [{ users: 32, ttft_ms: prefill + 10, prefill_ms: prefill }] });
+  const gap = (a, b) => {
+    const html = RTR.stageRow('think', { ...ctx, bench: { 'llama-cpp': lvl(a), vllm: lvl(b) } });
+    return /<span class="gap">([^<]*)<\/span>/.exec(html)[1];
+  };
+  assert.equal(gap(100, 91), 'About even');
+  assert.equal(gap(100, 90), 'vLLM 10 ms faster');
+  assert.equal(gap(90, 100), 'llama.cpp 10 ms faster');
+});
+
 test('gap names the faster engine, whichever side it is on', () => {
   const swapped = { ...ctx, a: vllm, b: llama };
-  assert.match(RTR.stageRow('wait', swapped), /vLLM 18 ms faster/);
+  assert.match(RTR.stageRow('wait', swapped), /vLLM 7 ms faster/);
   assert.doesNotMatch(RTR.stageRow('wait', swapped), /llama\.cpp [\d.,]+ (ms|s) faster/);
 });
 
@@ -235,4 +267,128 @@ test('track can be drawn as a horizontal strip', () =>
 test('output follows design rules', () => {
   const html = prose(RTR.everyStage(ctx) + RTR.chapter(q1, 0, ctx) + RTR.chapter(q3, 2, ctx) + RTR.chapter(q4, 3, fullCtx) + RTR.chapter(q2, 1, fullCtx) + RTR.track(ctx, 'wait'));
   assert.doesNotMatch(html, / · |→|↓|PLACEHOLDER|letter-spacing/);
+});
+
+// ---- verdict and URL order -------------------------------------------------
+
+const verdictPair = {
+  ...pair,
+  verdict: { a: ['Run it on a laptop'], b: ['Serve many people at once'] },
+  annotations: {
+    q1: [{ x: 64, metric: 'tok_s', kind: 'ratio', text: '{v}× at 64 users' }],
+    q2: [{ source: 'reuse', metric: 'warm_ttft_ms', kind: 'ratio', text: 'Repeat: {v}× the llama.cpp time' }],
+    q4: [{ source: 'kvFull', x: 1024, metric: 'tok_s', kind: 'ratio', text: '{v}× at 1024 tokens' }],
+  },
+};
+
+test('verdict lists each engine under its own heading, in the text colour', () => {
+  const html = RTR.verdict({ ...ctx, pair: verdictPair });
+  assert.match(html, />Reach for llama\.cpp if</);
+  assert.match(html, />Reach for vLLM if</);
+  assert.match(html, /Run it on a laptop/);
+  assert.doesNotMatch(html, /color:#d9662a/);
+  assert.equal(RTR.verdict({ ...ctx, pair: { ...pair } }), '');
+  assert.equal(RTR.verdict({ ...ctx, pair: null }), '');
+});
+
+test('a reversed URL shows the same verdict and annotations as the default order', () => {
+  const loaded = loadContext(root, ['assets/compare/util.js', 'assets/compare/stage-times.js', 'assets/compare/chart.js', 'assets/compare/render.js']);
+  const L = loaded.RT;
+  L.registerPair(verdictPair);  // replaces the site pair under the same key
+  const build = (search) => {
+    const ids = loaded.RTU.pickPair(search, L);
+    return { a: L.engines[ids[0]], b: L.engines[ids[1]], pair: L.pairs[ids.join('--')] || L.pairs[ids.slice().reverse().join('--')],
+      compare: L.compare, bench: { 'llama-cpp': llamaBench, vllm: vllmBenchFull } };
+  };
+  const normal = build('?a=llama-cpp&b=vllm');
+  const reversed = build('?a=vllm&b=llama-cpp');
+  assert.equal(reversed.a.id, 'llama-cpp');
+  const render = (c) => [loaded.RTR.verdict(c), ...L.compare.questions.map(q => loaded.RTR.evidence(q, c))].join('\n');
+  assert.equal(render(reversed), render(normal));
+  assert.match(render(normal), /Reach for llama\.cpp if/);
+  assert.match(render(normal), />5\.5× at 64 users</);
+});
+
+// ---- annotations on the reuse and kvFull charts ----------------------------
+
+test('reuse chart draws its annotation, and skips it when a run is missing', () => {
+  const html = RTR.evidence(q2, { ...fullCtx, pair: verdictPair });
+  assert.match(html, />Repeat: 0\.4× the llama\.cpp time</);
+  const noWarm = { ...fullCtx, pair: verdictPair, bench: { 'llama-cpp': llamaBench, vllm: { ...vllmBenchFull, reuse: { cold_ttft_ms: 1100 } } } };
+  assert.doesNotMatch(RTR.evidence(q2, noWarm), /Repeat: /);
+});
+
+test('kvFull chart draws its annotation, and skips it when the row is missing', () => {
+  const html = RTR.evidence(q4, { ...fullCtx, pair: verdictPair });
+  assert.match(html, />7× at 1024 tokens</);
+  const other = { ...verdictPair, annotations: { q4: [{ source: 'kvFull', x: 4096, metric: 'tok_s', kind: 'ratio', text: '{v}× at 4096' }] } };
+  assert.doesNotMatch(RTR.evidence(q4, { ...fullCtx, pair: other }), /at 4096/);
+});
+
+test('an annotation only draws on the chart whose source it names', () => {
+  const wrong = { ...verdictPair, annotations: { q4: [{ source: 'reuse', metric: 'cold_ttft_ms', kind: 'ratio', text: 'WRONG {v}' }] } };
+  assert.doesNotMatch(RTR.evidence(q4, { ...fullCtx, pair: wrong }), /WRONG/);
+});
+
+test('kvFull accepts {median} objects like the levels do', () => {
+  const m = (median) => ({ median, min: median, max: median });
+  const med = { ...fullCtx, bench: {
+    'llama-cpp': { ...llamaBench, kvFull: [{ max_tokens: 256, tok_s: m(480), failed: m(0) }, { max_tokens: 1024, tok_s: m(300), kv_retries: m(7), failed: m(2) }] },
+    vllm: { ...vllmBenchFull, kvFull: [{ max_tokens: 256, tok_s: m(2500) }, { max_tokens: 1024, tok_s: m(2100), preemptions: m(12) }] },
+  } };
+  const html = RTR.evidence(q4, med);
+  assert.match(html, /<title>vLLM, 1,024 max tokens: 2,100<\/title>/);
+  assert.match(html, /Preemptions 12/);
+  assert.match(html, /Decode retries 7/);
+  assert.match(html, /Failed requests 2/);
+});
+
+// ---- phone width -----------------------------------------------------------
+
+const sizes = (svg) => [...svg.matchAll(/font-size="(\d+(?:\.\d+)?)"/g)].map(m => Number(m[1]));
+const flat = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+const narrowCtx = { ...fullCtx, pair: verdictPair, narrow: true };
+
+test('narrow charts and the boundary diagram use a 380 wide viewBox with text of 12 or more', () => {
+  for (const q of [q1, q2, q3, q4]) {
+    const svg = RTR.evidence(q, narrowCtx).match(/<svg[\s\S]*?<\/svg>/)[0];
+    assert.match(svg, /<svg viewBox="0 0 380 /, q.id);
+    assert.ok(Math.min(...sizes(svg)) >= 12, q.id + ' ' + sizes(svg).join());
+  }
+  for (const q of [q1, q2, q3, q4]) assert.match(RTR.evidence(q, { ...fullCtx, pair: verdictPair }), /<svg viewBox="0 0 760 /, q.id);
+});
+
+test('narrow boundary diagram keeps every hop sentence, wrapped, and stays inside the viewBox', () => {
+  const html = RTR.evidence(q3, narrowCtx);
+  const text = flat(html);
+  for (const e of [llama, vllm]) for (const s of Object.values(e.steps).flat()) {
+    if (s.hopText) assert.ok(text.includes(s.hopText), s.hopText);
+  }
+  const h = Number(/viewBox="0 0 380 (\d+)"/.exec(html)[1]);
+  for (const m of html.matchAll(/<text [^>]*x="(-?[\d.]+)"[^>]*y="([\d.]+)"/g)) {
+    assert.ok(Number(m[1]) >= 0 && Number(m[1]) <= 380, 'x ' + m[1]);
+    assert.ok(Number(m[2]) <= h, 'y ' + m[2] + ' of ' + h);
+  }
+});
+
+test('narrow track strip is sized for a phone column', () => {
+  const svg = RTR.track(ctx, 'wait', { horizontal: true });
+  const w = Number(/viewBox="0 0 (\d+) /.exec(svg)[1]);
+  assert.ok(w <= 380, 'viewBox width ' + w);
+  assert.ok(Math.min(...sizes(svg)) >= 13, sizes(svg).join());
+});
+
+test('engine colours on small text use the darker text colour', () => {
+  const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, '');
+  const sections = RTR.stageRow('wait', ctx) + RTR.codeList(llama, 'wait');
+  assert.doesNotMatch(sections, /<h4 style="color:#d9662a"/);
+  assert.match(sections, /<h4 style="color:#[0-9a-f]{6}"/);
+  assert.match(RTR.stageRow('wait', ctx), /<span class="lbl" style="color:#2b54d0">vLLM/);
+  assert.doesNotMatch(RTR.stageRow('wait', ctx), /<span class="lbl" style="color:#d9662a"/);
+  const track = RTR.track(ctx, 'wait');
+  assert.doesNotMatch(track, /<text[^>]*fill="#d9662a"/);
+  assert.match(track, /<circle[^>]*stroke="#d9662a"/);
+  assert.doesNotMatch(RTR.evidence(q3, ctx), /<text[^>]*fill="#d9662a"/);
+  assert.doesNotMatch(RTR.evidence(q3, ctx), /<b style="color:#d9662a"/);
+  assert.ok(text(sections).length > 0);
 });

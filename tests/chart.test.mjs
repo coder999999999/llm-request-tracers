@@ -75,3 +75,64 @@ test('barPairs prints values at bar ends and has a hidden table', () => {
   assert.match(out, />First message</);
   assert.match(out, /<table class="sr-only"/);
 });
+
+const fontSizes = (svg) => [...svg.matchAll(/font-size="(\d+(?:\.\d+)?)"/g)].map(m => Number(m[1]));
+const sevenTicks = {
+  ...twoSeries,
+  series: [1, 2, 4, 8, 16, 32, 64].reduce((acc, x, i) => {
+    acc[0].points.push([x, 40 + i * 70]);
+    acc[1].points.push([x, 42 + i * 380]);
+    return acc;
+  }, [{ label: 'llama.cpp', color: '#d9662a', points: [] }, { label: 'vLLM', color: '#2b54d0', points: [] }]),
+  xTicks: [1, 2, 4, 8, 16, 32, 64],
+  annotations: [],
+};
+const textCount = (svg) => (svg.match(/<text /g) || []).length;
+
+test('narrow line chart uses a 380 wide viewBox, keeps text at 12 or more and thins the x ticks', () => {
+  const wide = RTC.lineChart(sevenTicks);
+  const narrow = RTC.lineChart({ ...sevenTicks, width: 380 });
+  assert.match(narrow, /<svg viewBox="0 0 380 /);
+  assert.ok(Math.min(...fontSizes(narrow)) >= 12, fontSizes(narrow).join());
+  assert.equal(textCount(wide) - textCount(narrow), 3);
+  // the last tick always stays
+  assert.match(narrow, />64</);
+  assert.match(wide, />2</);
+});
+
+test('narrow line chart still labels both lines at their ends', () => {
+  const svg = RTC.lineChart({ ...twoSeries, width: 380 });
+  assert.match(svg, />vLLM</);
+  assert.match(svg, />llama\.cpp</);
+});
+
+test('end labels and bar labels use the text colour, lines and bars the original', () => {
+  const svg = RTC.lineChart(twoSeries);
+  assert.doesNotMatch(svg, /<text[^>]*fill="#d9662a"/);
+  assert.match(svg, /<polyline[^>]*stroke="#d9662a"/);
+  assert.match(svg, /<text[^>]*fill="#2b54d0"[^>]*>vLLM</);
+  const bars = RTC.barPairs({ groups: [{ label: 'g', values: [{ label: 'llama.cpp', color: '#d9662a', v: 5 }] }], unit: 'ms' });
+  assert.doesNotMatch(bars, /<text[^>]*fill="#d9662a"/);
+  assert.match(bars, /<rect[^>]*fill="#d9662a"/);
+});
+
+const groups = [
+  { label: 'First message', values: [{ label: 'llama.cpp', color: '#d9662a', v: 1200 }, { label: 'vLLM', color: '#2b54d0', v: 1100 }] },
+  { label: 'Repeat with the same system prompt', values: [{ label: 'llama.cpp', color: '#d9662a', v: 90 }, { label: 'vLLM', color: '#2b54d0', v: 40 }] },
+];
+
+test('narrow bar chart uses a 380 wide viewBox with text at 12 or more', () => {
+  const svg = RTC.barPairs({ groups, unit: 'ms', width: 380 });
+  assert.match(svg, /<svg viewBox="0 0 380 /);
+  assert.ok(Math.min(...fontSizes(svg)) >= 12, fontSizes(svg).join());
+  assert.match(svg, />1,200 ms</);
+  assert.match(svg, />40 ms</);
+});
+
+test('bar chart annotations are drawn under their group and escaped', () => {
+  const svg = RTC.barPairs({ groups, unit: 'ms', annotations: [{ group: 1, text: '2.3× <faster>' }, { group: 7, text: 'nowhere' }] });
+  assert.match(svg, />2\.3× &lt;faster&gt;</);
+  assert.doesNotMatch(svg, /nowhere/);
+  const at = (s, needle) => Number(new RegExp('<text x="[0-9.]+" y="([0-9.]+)"[^>]*>' + needle).exec(s)[1]);
+  assert.ok(at(svg, '2[.]3×') > at(svg, '40 ms'));
+});

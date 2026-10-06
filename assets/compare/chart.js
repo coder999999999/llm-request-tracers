@@ -16,6 +16,10 @@
   function isNum(n) { return typeof n === 'number' && isFinite(n); }
   function color(c) { return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? String(c) : INK; }
   function r1(n) { return Math.round(n * 10) / 10; }
+  // Engine colours on small text are darkened to reach 4.5:1 on the page background.
+  function tcolor(c) { return RTU.textColor(color(c)); }
+  // Below this viewBox width a chart is drawn for a phone column: fewer x ticks, narrower margins.
+  var NARROW = 600;
 
   // Smallest of 1, 2, 2.5, 5, 10 (times a power of ten) that is at least n.
   function niceStep(n) {
@@ -49,7 +53,8 @@
   RTC.lineChart = function (spec) {
     spec = spec || {};
     var w = spec.width || 760, h = spec.height || 320;
-    var pl = 8, pr = 112, pt = 32, pb = 56;
+    var narrow = w < NARROW;
+    var pl = 8, pr = narrow ? 96 : 112, pt = 32, pb = 56;
     var xUnit = spec.xUnit || 'users';
     var series = (spec.series || []).map(function (s) {
       return {
@@ -96,6 +101,8 @@
     s += '<line class="axis" x1="' + pl + '" x2="' + plotR + '" y1="' + r1(Y(0)) + '" y2="' + r1(Y(0)) + '" stroke="' + INK + '" stroke-width="1.5"/>';
 
     var ticks = (spec.xTicks && spec.xTicks.length ? spec.xTicks : xs).filter(isNum);
+    // On a phone every other tick is dropped, counting back from the last so the last one stays.
+    if (narrow) ticks = ticks.filter(function (x, i) { return (ticks.length - 1 - i) % 2 === 0; });
     ticks.forEach(function (x) {
       s += '<text x="' + r1(X(x)) + '" y="' + (h - pb + 24) + '" text-anchor="' + (X(x) <= pl + 8 ? 'start' : 'middle') + '" style="font-variant-numeric:tabular-nums">' + esc(fmt(x)) + '</text>';
     });
@@ -155,7 +162,7 @@
       if (ends[j].ly - ends[j - 1].ly < 18) ends[j].ly = ends[j - 1].ly + 18;
     }
     ends.forEach(function (e) {
-      s += '<text x="' + r1(e.x + 12) + '" y="' + r1(e.ly + 5) + '" fill="' + e.sr.color + '" font-weight="600" font-size="15">' + esc(e.sr.label) + '</text>';
+      s += '<text x="' + r1(e.x + 12) + '" y="' + r1(e.ly + 5) + '" fill="' + tcolor(e.sr.color) + '" font-weight="600" font-size="15">' + esc(e.sr.label) + '</text>';
     });
     s += '</svg>';
 
@@ -169,10 +176,12 @@
       ['Series', spec.xLabel || 'x', spec.yLabel || 'y', 'Lowest repeat', 'Highest repeat'], rows);
   };
 
-  // spec: {groups:[{label, values:[{label,color,v}]}], unit, ariaLabel, width}
+  // spec: {groups:[{label, values:[{label,color,v}]}], unit, ariaLabel, width,
+//        annotations:[{group: index into groups, text}]}
   RTC.barPairs = function (spec) {
     spec = spec || {};
     var w = spec.width || 760;
+    var narrow = w < NARROW;
     var unit = spec.unit ? ' ' + spec.unit : '';
     var groups = (spec.groups || []).map(function (g) {
       return {
@@ -182,7 +191,7 @@
     });
     var max = 1;
     groups.forEach(function (g) { g.values.forEach(function (v) { max = Math.max(max, v.v); }); });
-    var bx = 112, valueRoom = 112, barH = 16, rowH = 28, headH = 24, gap = 32;
+    var bx = narrow ? 96 : 112, valueRoom = narrow ? 80 : 112, barH = 16, rowH = 28, headH = 24, gap = 32;
     var barMax = Math.max(40, w - bx - valueRoom);
     var y = 0;
     var body = '';
@@ -195,13 +204,19 @@
       g.values.forEach(function (v) {
         var bw = Math.max(2, Math.round(v.v / max * barMax));
         var c = color(v.color);
-        body += '<text x="0" y="' + (y + 13) + '" fill="' + c + '" font-weight="600" font-size="15">' + esc(v.label) + '</text>';
+        body += '<text x="0" y="' + (y + 13) + '" fill="' + tcolor(c) + '" font-weight="600" font-size="15">' + esc(v.label) + '</text>';
         body += '<rect x="' + bx + '" y="' + (y + 2) + '" width="' + bw + '" height="' + barH + '" fill="' + c + '"/>';
         body += '<text x="' + (bx + bw + 8) + '" y="' + (y + 15) + '" fill="' + INK + '" font-size="15" style="font-variant-numeric:tabular-nums">' + esc(fmt(v.v) + unit) + '</text>';
         rows.push([g.label, v.label, fmt(v.v) + unit]);
         y += rowH;
       });
       body += '<line x1="' + bx + '" x2="' + bx + '" y1="' + gTop + '" y2="' + y + '" stroke="' + INK + '" stroke-width="1.5"/>';
+      // Annotations for this group: a line of text under its bars, stating the finding.
+      (spec.annotations || []).forEach(function (a) {
+        if (!a || a.group !== gi || !a.text) return;
+        body += '<text x="' + bx + '" y="' + (y + 18) + '" fill="' + INK + '" font-weight="600" font-size="15">' + esc(a.text) + '</text>';
+        y += 28;
+      });
     });
     var h = Math.max(y, 8);
     var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="group" aria-label="' + esc(spec.ariaLabel || 'Bar chart') + '" ' +

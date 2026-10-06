@@ -9,12 +9,22 @@
   function $(id) { return document.getElementById(id); }
   function hex(c, fallback) { return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? String(c) : fallback; }
 
+  // Charts and the boundary diagram are drawn 380 wide when the chapter's main
+  // column is under 600px (a phone), 760 wide otherwise, so their text stays readable.
+  var NARROW_BELOW = 600;
+  function isNarrow() {
+    var host = $('chapters');
+    return !!host && host.clientWidth > 0 && host.clientWidth < NARROW_BELOW;
+  }
+
+  // pickPair already puts the two engines in the pair file's order, so verdict.a,
+  // annotation ratios and the lane order do not depend on how the URL names them.
   function currentPair() {
     var ids = RTU.pickPair(location.search, RT);
     var a = RT.engines[ids[0]], b = RT.engines[ids[1]];
     if (!a || !b) return null;
     var pair = RT.pairs[a.id + '--' + b.id] || RT.pairs[b.id + '--' + a.id] || null;
-    return { a: a, b: b, pair: pair, compare: RT.compare, bench: RT.bench };
+    return { a: a, b: b, pair: pair, compare: RT.compare, bench: RT.bench, narrow: isNarrow() };
   }
 
   // ---- track ------------------------------------------------------------
@@ -88,6 +98,8 @@
 
   function renderChapters(ctx) {
     var host = $('chapters');
+    // A re-render on resize keeps whichever code paths the reader had opened.
+    var open = [].map.call(host.querySelectorAll('details'), function (d) { return d.open; });
     host.innerHTML = ctx.compare.questions.map(function (q, i) { return RTR.chapter(q, i, ctx); }).join('');
     // Below 1100px the vertical track is hidden; each chapter gets a strip instead.
     host.querySelectorAll('.chapter').forEach(function (chapter, i) {
@@ -95,6 +107,7 @@
       var strip = '<div class="track-strip">' + RTR.track(ctx, q.stages[0], { horizontal: true }) + '</div>';
       chapter.firstElementChild.insertAdjacentHTML('afterbegin', strip);
     });
+    host.querySelectorAll('details').forEach(function (d, i) { if (open[i]) d.open = true; });
     watchChapters(ctx);
   }
 
@@ -106,15 +119,7 @@
     h1.querySelector('.a').textContent = ctx.a.name;
     h1.querySelector('.b').textContent = ctx.b.name;
     // The verdict comes from the pair file. Until it is written, nothing is shown.
-    var v = ctx.pair && ctx.pair.verdict;
-    var html = '';
-    if (v && ((v.a && v.a.length) || (v.b && v.b.length))) {
-      [[ctx.a, v.a], [ctx.b, v.b]].forEach(function (p) {
-        if (!p[1] || !p[1].length) return;
-        html += '<div><h3 style="color:' + hex(p[0].color, '#121212') + '">Reach for ' + RTU.esc(p[0].name) + ' if</h3><ul>' +
-          p[1].map(function (t) { return '<li>' + RTU.esc(t) + '</li>'; }).join('') + '</ul></div>';
-      });
-    }
+    var html = RTR.verdict(ctx);
     var host = $('verdict');
     host.className = html ? 'verdict' : '';
     host.innerHTML = html;
@@ -145,8 +150,8 @@
     $('picker').addEventListener('change', function (e) {
       var sel = e.target;
       if (!sel || !sel.getAttribute('data-pick')) return;
-      var ids = RTU.pickPair(location.search, RT);
-      var next = { a: ids[0], b: ids[1] };
+      var shown = currentPair();
+      var next = { a: shown.a.id, b: shown.b.id };
       var which = sel.getAttribute('data-pick'), other = which === 'a' ? 'b' : 'a';
       // Picking the engine already shown on the other side swaps the two.
       if (sel.value === next[other]) next[other] = next[which];
@@ -166,6 +171,21 @@
     renderChapters(ctx);
     $('every-stage-rows').innerHTML = RTR.everyStage(ctx);
     renderMethod();
+  }
+
+  // Redraws the chapters when the column crosses the phone threshold (not on every resize).
+  function wireResize() {
+    var narrow = isNarrow(), timer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var now = isNarrow();
+        if (now === narrow) return;
+        narrow = now;
+        var ctx = currentPair();
+        if (ctx) renderChapters(ctx);
+      }, 150);
+    });
   }
 
   // ---- Episode 1 player -------------------------------------------------
@@ -189,5 +209,6 @@
   wireTrack($('chapters'));
   wirePicker();
   wirePlayer();
+  wireResize();
   render();
 })();

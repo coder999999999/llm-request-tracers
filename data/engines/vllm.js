@@ -51,7 +51,7 @@ RT.registerEngine({
       file: 'vllm/config/compilation.py', line: 629, check: 'FULL_AND_PIECEWISE mode'
     },
     model_formats: {
-      value: 'Loads safetensors, falling back to PyTorch bin files',
+      value: 'By default loads safetensors, falling back to PyTorch bin files',
       file: 'vllm/config/load.py', line: 34, check: 'safetensors format'
     },
     hardware: {

@@ -55,7 +55,7 @@ RT.registerEngine({
       file: 'src/llama-model-loader.cpp', line: 570, check: 'gguf_init_from_file'
     },
     hardware: {
-      value: 'Backends chosen at build time: CUDA, Metal, Vulkan, SYCL, CANN, CPU',
+      value: 'Backends enabled by build flags, e.g. CUDA and Metal',
       file: 'ggml/src/ggml-backend-reg.cpp', line: 120, check: 'GGML_USE_CUDA'
     },
     structured_output: {

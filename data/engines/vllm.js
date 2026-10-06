@@ -31,7 +31,7 @@ RT.registerEngine({
       file: 'vllm/v1/core/sched/scheduler.py', line: 574, check: 'decoding phase'
     },
     prefix_reuse: {
-      value: 'Reuses any matching cache block, across requests',
+      value: 'Reuses whole cached prefix blocks, across requests',
       file: 'vllm/v1/core/kv_cache_manager.py', line: 264, check: 'get_computed_blocks'
     },
     kv_full: {
@@ -41,6 +41,30 @@ RT.registerEngine({
     detokenize_where: {
       value: 'Detokenizes in the API process',
       file: 'vllm/v1/engine/output_processor.py', line: 745, check: 'detokenizer.update'
+    },
+    kv_layout: {
+      value: 'KV cache is split into fixed-size blocks of tokens',
+      file: 'vllm/config/cache.py', line: 74, check: 'contiguous cache block'
+    },
+    cuda_graphs: {
+      value: 'By default: full CUDA graphs for decode, piecewise for prefill',
+      file: 'vllm/config/compilation.py', line: 629, check: 'FULL_AND_PIECEWISE mode'
+    },
+    model_formats: {
+      value: 'Loads safetensors, falling back to PyTorch bin files',
+      file: 'vllm/config/load.py', line: 34, check: 'safetensors format'
+    },
+    hardware: {
+      value: 'Built-in platforms: CUDA, ROCm, XPU, TPU and CPU',
+      file: 'vllm/platforms/__init__.py', line: 231, check: 'builtin_platform_plugins'
+    },
+    structured_output: {
+      value: 'Backends: xgrammar, guidance, outlines, lm-format-enforcer',
+      file: 'vllm/config/structured_outputs.py', line: 13, check: 'lm-format-enforcer'
+    },
+    tool_calling: {
+      value: 'Model-specific tool parsers, registered by name',
+      file: 'vllm/tool_parsers/__init__.py', line: 24, check: '_TOOL_PARSERS_TO_REGISTER'
     }
   }
 });

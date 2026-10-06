@@ -41,6 +41,30 @@ RT.registerEngine({
     detokenize_where: {
       value: 'Detokenizes on the inference thread',
       file: 'tools/server/server-context.cpp', line: 4084, check: 'common_token_to_piece'
+    },
+    kv_layout: {
+      value: 'KV cells form a ring buffer searched for a free slot',
+      file: 'src/llama-kv-cache.h', line: 301, check: 'ring buffer of KV cells'
+    },
+    cuda_graphs: {
+      value: 'CUDA graphs are on by default in the CMake build',
+      file: 'CMakeLists.txt', line: 170, check: 'GGML_CUDA_GRAPHS_DEFAULT'
+    },
+    model_formats: {
+      value: 'Loads GGUF model files',
+      file: 'src/llama-model-loader.cpp', line: 570, check: 'gguf_init_from_file'
+    },
+    hardware: {
+      value: 'Backends chosen at build time: CUDA, Metal, Vulkan, SYCL, CANN, CPU',
+      file: 'ggml/src/ggml-backend-reg.cpp', line: 120, check: 'GGML_USE_CUDA'
+    },
+    structured_output: {
+      value: 'JSON schema is converted to a grammar that constrains sampling',
+      file: 'common/arg.cpp', line: 2285, check: 'json_schema_to_grammar'
+    },
+    tool_calling: {
+      value: 'Tool calling requires the Jinja chat template engine',
+      file: 'common/chat.h', line: 256, check: 'use_jinja'
     }
   }
 });

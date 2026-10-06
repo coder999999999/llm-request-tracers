@@ -1,6 +1,6 @@
 # Engine comparison site: design
 
-Date: 2026-10-06. Status: draft for review.
+Date: 2026-10-06. Status: approved 2026-10-06.
 
 ## 1. Goal
 
@@ -259,7 +259,7 @@ Phases 1 and 2 can run in parallel. Nothing is pushed to `main` (and so to GitHu
 - A fake third engine file, used only in a test and never committed, appears in the picker, and the page still renders with "Not covered yet" and "No write-up for this pair yet".
 - The benchmark is rerun once end to end from `bench/README.md` on a clean checkout before publishing.
 
-## 10. Open questions for review
+## 10. Resolved at review (2026-10-06)
 
-1. Is waiting until phase 3 before going live, working on a `compare` branch, acceptable? The alternative is shipping phase 1 with empty performance sections.
-2. Llama 3.1 8B needs the Meta licence accepted on Hugging Face. Is that OK, or should it be an ungated model? If the model changes, the tracers' "32 layers" example would no longer match the benchmark.
+1. Work stays on the `compare` branch and is not published until phase 3 is reviewed.
+2. The model is Llama 3.1 8B Instruct. The licence is accepted on Hugging Face, and `HF_TOKEN` lives in a git-ignored local `.env`.

@@ -242,3 +242,17 @@ def test_missing_before_scrape_is_reported_plainly(tmp_path, monkeypatch):
     monkeypatch.setattr(loadgen, "run_level", fake_run_level)
     s = asyncio.run(run_all.run_one_level(run_all.Run("vllm", "main", 0, "level", 1), tmp_path, [], 0, 1))
     assert s["server"] == {"error": "RuntimeError: before-scrape did not complete"}
+
+
+def test_reuse_control_probe_runs_only_when_requested(tmp_path, monkeypatch):
+    _stub_infra(monkeypatch)
+    probed = []
+    monkeypatch.setattr(run_all, "probe", lambda e, p: probed.append((e, len(p))))
+
+    async def fake_reuse(run, out):
+        return {"cold_ttft_ms": 1, "warm_ttft_ms": 1, "valid": True}
+    monkeypatch.setattr(run_all, "run_reuse", fake_reuse)
+    rr = run_all.plan_runs(repeats=1, configs=["reuse"], engines=["llama"])
+    prompts = [{"id": i, "messages": []} for i in range(6)]
+    assert run_all.execute_group(rr, tmp_path, prompts, 1, 1, reuse_probe="unrelated") == 0
+    assert probed == [("llama", 6)]

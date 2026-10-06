@@ -447,15 +447,18 @@ def probe(engine: str, prompts):
         raise RuntimeError(f"all probe requests failed: {recs[0].error}")
 
 
-def execute_group(group, out: Path, prompts, warmup_s, measure_s) -> int:
-    """Returns the number of failed runs. Never raises for server/level failures."""
+def execute_group(group, out: Path, prompts, warmup_s, measure_s, reuse_probe="none") -> int:
+    """Returns the number of failed runs. Never raises for server/level failures.
+    reuse_probe="unrelated" sends the 4-request probe before the reuse config too (control run)."""
     first = group[0]
     print(f"[start] {first.engine}/{first.config} r{first.repeat}", flush=True)
     failures = 0
     try:
         start_server(first.engine, first.config)
         wait_healthy(first.engine)
-        if first.config != "reuse":  # reuse turn 1 must be cold; see probe()
+        # reuse turn 1 must be cold for the prefix cache; see probe(). The control run probes with
+        # main prompts, which share no prefix with the reuse system prompt, to remove start-up cost.
+        if first.config != "reuse" or reuse_probe == "unrelated":
             probe(first.engine, prompts)
     except Exception as e:  # noqa: BLE001
         for run in group:
@@ -527,6 +530,9 @@ def main(argv=None):
     ap.add_argument("--out", default=None, help="default: results/<YYYY-MM-DD> next to this script")
     ap.add_argument("--check-tokens", action="store_true",
                     help="exit 2 if prompt_tokens differ by more than 1 between engines")
+    ap.add_argument("--reuse-probe", choices=("none", "unrelated"), default="none",
+                    help="reuse config only: \"unrelated\" sends the untimed 4-request probe (main prompts, no "
+                         "shared prefix with the reuse system prompt) before turn 1 (control run)")
     ap.add_argument("--no-skip", action="store_true", help="re-run levels whose summary already exists")
     ap.add_argument("--retry-invalid", action="store_true",
                     help="on resume, also re-run levels whose summary is valid:false")
@@ -549,7 +555,7 @@ def main(argv=None):
         for group in group_runs(runs):
             todo = [r for r in group if a.no_skip or not done(r, out, a.retry_invalid)]
             if todo:
-                failures += execute_group(todo, out, prompts, a.warmup, a.measure)
+                failures += execute_group(todo, out, prompts, a.warmup, a.measure, a.reuse_probe)
     finally:
         stop_servers()
     if set(engines) == set(ENGINES) and "main" in configs:

@@ -37,3 +37,17 @@ Filled in by later tasks.
 ## Outputs
 
 Filled in by later tasks.
+
+## Prompts
+
+`bench/prompts/` holds the fixed prompt sets (committed): `main.jsonl` (512 prompts, 173 to 177 tokens after the
+Llama 3.1 chat template) and `reuse.json` (one system prompt of about 1,490 tokens plus 20 turns). Regenerate with a
+`llama` server running (token counts come from its `/apply-template` and `/tokenize`):
+
+```bash
+docker compose -f bench/docker-compose.yml up -d llama
+docker compose -f bench/docker-compose.yml run --rm client python make_prompts.py --seed 7 --out prompts --server http://llama:8080
+docker compose -f bench/docker-compose.yml stop llama
+```
+
+Without `--server` the script writes untuned text (used by the unit test).

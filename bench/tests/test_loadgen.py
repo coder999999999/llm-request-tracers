@@ -63,7 +63,7 @@ async def one(handler, max_tokens=8):
 def test_ttft_ignores_role_only_first_chunk():
     h = handler_for([chunk(role="assistant", content=""), chunk("Hi"), chunk(" there")],
                     [0.010, 0.040, 0.020])
-    r = run(one(h))
+    r = run(one(h, max_tokens=2))
     assert r.ok
     assert 45 <= r.ttft_ms < 90
     assert len(r.itl_ms) == 1 and r.itl_ms[0] >= 15
@@ -72,12 +72,12 @@ def test_ttft_ignores_role_only_first_chunk():
 def test_tokens_prefer_usage_then_timings_then_chunks():
     u = chunk(usage={"completion_tokens": 7, "prompt_tokens": 180})
     t = chunk(timings={"predicted_n": 5, "prompt_ms": 12.5, "cache_n": 3})
-    r = run(one(handler_for([chunk("a"), chunk("b"), t, u], [0] * 4)))
+    r = run(one(handler_for([chunk("a"), chunk("b"), t, u], [0] * 4), max_tokens=7))
     assert (r.out_tokens, r.tokens_source) == (7, "usage")
     assert r.prompt_tokens == 180 and r.prompt_ms == 12.5 and r.cache_n == 3
-    r = run(one(handler_for([chunk("a"), chunk("b"), t], [0] * 3)))
+    r = run(one(handler_for([chunk("a"), chunk("b"), t], [0] * 3), max_tokens=5))
     assert (r.out_tokens, r.tokens_source) == (5, "timings")
-    r = run(one(handler_for([chunk("a"), chunk("b"), chunk("c")], [0] * 3)))
+    r = run(one(handler_for([chunk("a"), chunk("b"), chunk("c")], [0] * 3), max_tokens=3))
     assert (r.out_tokens, r.tokens_source) == (3, "chunks")
 
 
@@ -107,7 +107,7 @@ def test_http_503_and_broken_stream_are_errors():
             return httpx.Response(503)
         return handler_for([chunk("a")], [0.001])(req)
     recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
-                         warmup_s=0, measure_s=0.3, transport=httpx.MockTransport(flaky)))
+                         warmup_s=0, measure_s=0.6, max_tokens=1, transport=httpx.MockTransport(flaky)))
     assert any(not r.ok for r in recs) and any(r.ok for r in recs)
 
 
@@ -115,17 +115,21 @@ def test_records_outside_window_are_dropped():
     # each request takes ~0.3s; warm-up 0.4, window 0.4..1.0
     h = handler_for([chunk("a"), chunk("b")], [0.15, 0.15])
     recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
-                         warmup_s=0.4, measure_s=0.6, transport=httpx.MockTransport(h)))
+                         warmup_s=0.4, measure_s=0.6, max_tokens=2, transport=httpx.MockTransport(h)))
     assert recs
     for r in recs:
+        if not r.in_window:
+            continue
         assert r.start_s >= 0.4
         assert r.start_s + r.e2e_ms / 1000 <= 1.0 + 0.02
-    assert len(recs) <= 2  # the request straddling warm-up and the one cut by the window are gone
+    assert len([r for r in recs if r.in_window]) <= 2  # straddling requests are latency-dropped
 
 
-def mk(ok=True, tokens=10):
+def mk(ok=True, tokens=10, chunk_times=None, **kw):
     return Record(user=0, start_s=0, ttft_ms=50, itl_ms=[10.0], e2e_ms=100, out_tokens=tokens,
-                  tokens_source="usage", ok=ok, error=None if ok else "x")
+                  tokens_source="usage", ok=ok, error=None if ok else "x",
+                  chunk_times=list(chunk_times) if chunk_times is not None else [0.0] * tokens,
+                  **kw)
 
 
 def test_level_invalid_above_one_percent_errors():
@@ -135,8 +139,52 @@ def test_level_invalid_above_one_percent_errors():
     assert s["valid"] is True and s["err_rate"] == 0.01
 
 
-def test_tok_s_counts_only_ok_records_in_window():
-    s = summarize([mk(tokens=100), mk(tokens=200), mk(False, tokens=999)], 10)
-    assert s["tok_s"] == 30.0
-    assert s["ttft_ms"] == {"median": 50, "p90": 50}
-    assert s["prompt_ms"] is None
+def test_short_outputs_are_errors_and_counted():
+    h = handler_for([chunk("a"), chunk("b")], [0, 0])
+    r = run(one(h, max_tokens=256))
+    assert not r.ok and r.short and "short output" in r.error
+    s = summarize([mk(), mk(False, short=True)], 10)
+    assert s["n_short"] == 1 and s["n_err"] == 1 and s["valid"] is False
+
+
+def test_tok_s_steady_stream_matches_true_rate():
+    # one chunk every 10 ms, true rate 100 tok/s, window 1..3 s (measure 2)
+    times = [i * 0.01 for i in range(400)]
+    r = mk(tokens=400, chunk_times=times)
+    s = summarize([r], 2.0, warmup_s=1.0)
+    assert s["tokens_per_chunk"] == 1.0
+    assert abs(s["tok_s"] - 100.0) / 100.0 < 0.01
+
+
+def test_tok_s_partial_request_at_window_end_counts_in_window_chunks():
+    full = mk(tokens=10, chunk_times=[1.0 + 0.1 * i for i in range(10)])
+    partial = Record(user=1, start_s=2.0, ok=None, partial=True, in_window=False,
+                     chunk_times=[2.5, 2.8, 2.9, 3.0, 3.1, 3.4])  # window 1..3: 4 inside
+    s = summarize([full, partial], 2.0, warmup_s=1.0)
+    assert s["n_ok"] == 1 and s["n_err"] == 0  # partial is not an error
+    assert s["tok_s"] == (10 + 4) / 2.0
+
+
+def test_tok_s_request_straddling_warmup_counts_only_post_warmup_chunks():
+    straddle = mk(tokens=8, chunk_times=[0.6, 0.8, 0.9, 1.1, 1.2, 1.3, 1.4, 1.5], in_window=False)
+    s = summarize([straddle], 1.0, warmup_s=1.0)
+    assert s["n_ok"] == 0 and s["tok_s"] == 5.0  # 5 chunks at or after 1.0, none of its latency counted
+    full = mk(tokens=4, chunk_times=[1.6, 1.7, 1.8, 1.9])
+    s = summarize([straddle, full], 1.0, warmup_s=1.0)
+    assert s["tok_s"] == (5 + 4) / 1.0  # 5 post-warm-up chunks from the straddler
+
+
+def test_run_level_returns_partial_and_straddlers_for_throughput():
+    # 10 chunks 0.05 s apart (0.5 s per request); warm-up 0.25, window ends 0.95
+    h = handler_for([chunk(str(i)) for i in range(10)], [0.05] * 10)
+    recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
+                         warmup_s=0.25, measure_s=0.7, max_tokens=10,
+                         transport=httpx.MockTransport(h)))
+    assert any(r.partial for r in recs)
+    assert all(not r.ok for r in recs if r.partial) or all(r.ok is None for r in recs if r.partial)
+    assert any(not r.in_window and not r.partial for r in recs)
+    s = summarize(recs, 0.7, warmup_s=0.25)
+    assert s["n_err"] == 0
+    n = sum(1 for r in recs for t in r.chunk_times if 0.25 <= t <= 0.95)
+    assert 11 <= n <= 15  # about 14 chunks at 20/s over 0.7 s
+    assert s["tok_s"] > 0

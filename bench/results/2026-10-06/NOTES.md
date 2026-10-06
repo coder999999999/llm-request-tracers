@@ -72,7 +72,7 @@ Every sentence of benchmark-derived text on the comparison page, with the chart 
 |---|---|
 | 2,209 against 892 tok/s at 64 users, 2.5x | throughput chart, 64 users; medians 2,209.4 and 892.45, ratio 2.476 |
 | Kept serving at 512 and 1,024 tokens, 2,072 and 1,506 tok/s, by preempting; every llama.cpp request failed | KV cache chart (vLLM tok_s 2,072.3 and 1,506.5) and its table (preemptions 68 and 264; llama.cpp failed requests 128 at both); KV-full findings above; KV-full feature row (preempts a request, recomputes later) |
-| At 32 users the time before prefill was 115 ms against 420 ms | "Before prefill, at 32 users" row under the question 1 chart: TTFT minus prefill, 411.3 - 296.4 = 114.9 ms and 786.4 - 366.3 = 420.1 ms (derived, same definition on both engines) |
+| At 32 users the time before prefill was 115 ms against 420 ms | "Before prefill, at 32 users" row under the question 1 chart: TTFT minus prefill, 411.3 - 296.4 = 114.9 ms and 786.4 - 366.3 = 420.1 ms (derived as TTFT minus the prefill time each server reports: llama.cpp `prompt_ms`, the vLLM prefill histogram; the two prefill figures are not measured identically) |
 
 Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `--kv-unified` with a 32,768-token shared context; vLLM `--max-model-len 2048` with 2,048 blocks). Both have the same 32,768-token budget (see `env.json` `server_args.kvfull`).
 
@@ -89,7 +89,7 @@ Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `-
 | q2: on the cold first message llama.cpp was faster | prompt reuse chart, "First message" bars |
 | q3: unchanged | code paths, hops and Detokenizing and Tokenizing feature rows |
 | q4: 64 users, 32,768-token KV budget | `env.json` `server_args.kvfull`; Fairness rules in the spec (§5.2) |
-| q4: 256 tokens, both finished every request, 421 and 2,185 tok/s | KV cache chart, 256 tokens; table: failed requests 0 on both. The 421 figure is counted by token arrival; see the KV-full findings for why it is far below llama.cpp's main-config 892 and why its cause is not established |
+| q4: at 256 tokens both engines finished every request | table: failed requests 0 on both. The llama.cpp 421 tok/s at 256 tokens is not cited on the page: no established cause for its gap to the main-config 892 (see KV-full findings) |
 | q4: every llama.cpp request failed at 512 and 1,024 with a context size error, after 111 and 91 retries | table rows "Replies up to 512 / 1,024 tokens" (failed 128, decode retries 111 and 91); KV-full findings (HTTP 500 "Context size has been exceeded"); KV-full feature row (retries with a smaller batch) |
 | q4: vLLM preempted 68 and 264 requests and served at 2,072 and 1,506 tok/s | table (preemptions 68 and 264), chart |
 
@@ -99,9 +99,9 @@ Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `-
 |---|---|
 | Throughput: "vLLM 2.5x at 64 users" | ratio of `levels` tok_s medians at 64 users |
 | Reuse: "Cold: vLLM takes 1.9x as long" | 380.1 / 202.4 |
-| Reuse: "Warm: vLLM takes 1.2x as long" | 33.2 / 28.7 (a 4.5 ms difference) |
+| Reuse: "Warm: 28.7 ms against 33.2 ms" | `reuse.warm_ttft_ms`: 28.7 (llama.cpp, typed text) and 33.2 (vLLM, filled from data) |
 | KV: "vLLM: 2,185 tokens per second" (at 256) | vLLM kvFull tok_s at 256 |
-| KV: "llama.cpp: 128 failed" (at 1,024) | llama.cpp kvFull failed at 1,024; drawn at that value on the tokens-per-second axis, so its height means nothing |
+| KV: "llama.cpp: all 128 failed" (at 1,024) | llama.cpp kvFull failed at 1,024; drawn at that value on the tokens-per-second axis, so its height means nothing |
 
 ### Feature wording audited
 

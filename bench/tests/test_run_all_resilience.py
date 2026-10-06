@@ -11,6 +11,8 @@ import run_all  # noqa: E402
 from loadgen import LevelResult, Record  # noqa: E402
 from test_run_all import _fake_run  # noqa: E402
 
+REAL_PROBE = run_all.probe
+
 
 def _rec(**kw):
     base = dict(user=0, start_s=1.0, ttft_ms=50.0, e2e_ms=100.0, out_tokens=4, ok=True,
@@ -189,3 +191,54 @@ def test_level_keeps_records_when_scrape_fails(tmp_path, monkeypatch):
     d = tmp_path / "vllm" / "main"
     assert (d / "u1-r0.jsonl").read_text().strip()
     assert json.loads((d / "u1-r0.summary.json").read_text())["server"]["error"]
+
+
+def test_aggregate_reuse_ignores_failed_json_and_success_clears_it(tmp_path, monkeypatch):
+    turns = [{"turn": 1, "ttft_ms": 100.0, "prompt_tokens": 1500, "cache_n": 0, "ok": True, "error": None},
+             {"turn": 2, "ttft_ms": 10.0, "prompt_tokens": 1520, "cache_n": 1490, "ok": True, "error": None}]
+    run_all.write_json(tmp_path / "reuse" / "llama-r0.json", {
+        "repeat": 0, "cold_ttft_ms": 100.0, "warm_ttft_ms": 10.0, "valid": True, "turns": turns})
+    run_all.write_json(tmp_path / "reuse" / "llama-r1.failed.json", {"error_type": "TimeoutError"})
+    run_all.aggregate_reuse(tmp_path, "llama")  # must not raise KeyError
+    assert json.loads((tmp_path / "reuse" / "llama.json").read_text())["repeats"] == 1
+
+    # a successful retry of repeat 1 removes its stale failure file
+    async def fake_one_request(client, base, model, messages, max_tokens, t0, **kw):
+        return _rec(ttft_ms=20.0, cache_n=5)
+    monkeypatch.setattr(loadgen, "one_request", fake_one_request)
+    run = run_all.Run("llama", "reuse", 1, "reuse")
+    asyncio.run(run_all.run_reuse(run, tmp_path))
+    assert not (tmp_path / "reuse" / "llama-r1.failed.json").exists()
+    assert json.loads((tmp_path / "reuse" / "llama.json").read_text())["repeats"] == 2
+
+
+def test_reuse_group_skips_probe_and_all_failed_probe_fails_group(tmp_path, monkeypatch):
+    _stub_infra(monkeypatch)
+    probed = []
+    monkeypatch.setattr(run_all, "probe", lambda e, p: probed.append(e))
+
+    async def fake_reuse(run, out):
+        return {"cold_ttft_ms": 1, "warm_ttft_ms": 1, "valid": True}
+    monkeypatch.setattr(run_all, "run_reuse", fake_reuse)
+    rr = run_all.plan_runs(repeats=1, configs=["reuse"], engines=["llama"])
+    assert run_all.execute_group(rr, tmp_path, [], 1, 1) == 0 and probed == []
+
+    class R:  # every probe request fails
+        ok, error = False, "HTTP 503"
+
+    async def fail_req(*a, **k):
+        return R()
+    monkeypatch.setattr(loadgen, "one_request", fail_req)
+    monkeypatch.setattr(run_all, "probe", REAL_PROBE)
+    monkeypatch.setattr(loadgen, "one_request", fail_req)
+    mr = run_all.plan_runs(repeats=1, configs=["main"], engines=["llama"], levels=[1])
+    assert run_all.execute_group(mr, tmp_path, [{"id": 0, "messages": []}] * 4, 1, 1) == 1
+    assert "all probe requests failed" in run_all.failed_path(mr[0], tmp_path).read_text()
+
+
+def test_missing_before_scrape_is_reported_plainly(tmp_path, monkeypatch):
+    async def fake_run_level(base, model, prompts, users, warmup_s, measure_s, max_tokens, on_window_start):
+        return LevelResult([_rec()], warmup_s, measure_s, users)  # window ended, hook never ran
+    monkeypatch.setattr(loadgen, "run_level", fake_run_level)
+    s = asyncio.run(run_all.run_one_level(run_all.Run("vllm", "main", 0, "level", 1), tmp_path, [], 0, 1))
+    assert s["server"] == {"error": "RuntimeError: before-scrape did not complete"}

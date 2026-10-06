@@ -314,6 +314,8 @@ async def run_one_level(run: Run, out: Path, prompts, warmup_s, measure_s):
         if level.callback_error:
             raise RuntimeError(f"window-start hook failed: {level.callback_error}")
         if run.engine == "vllm":
+            if "before" not in state:
+                raise RuntimeError("before-scrape did not complete")
             server = metrics.vllm_stage_means(state["before"], await _scrape(base))
         else:
             logs = compose("logs", "--no-color", "--since", state["since"], "llama", check=False).stdout
@@ -346,12 +348,14 @@ async def run_reuse(run: Run, out: Path):
         "turns": turns,
     }
     write_json(out / "reuse" / f"{run.engine}-r{run.repeat}.json", res)
+    failed_path(run, out).unlink(missing_ok=True)  # stale failure from an earlier attempt
     aggregate_reuse(out, run.engine)
     return res
 
 
 def aggregate_reuse(out: Path, engine: str):
-    reps = [json.loads(p.read_text()) for p in sorted((out / "reuse").glob(f"{engine}-r*.json"))]
+    reps = [json.loads(p.read_text()) for p in sorted((out / "reuse").glob(f"{engine}-r*.json"))
+            if re.fullmatch(rf"{engine}-r\d+\.json", p.name)]
     if not reps:
         return
 
@@ -430,13 +434,17 @@ def record_failure(run: Run, out: Path, exc: BaseException):
 
 
 def probe(engine: str, prompts):
-    """Untimed warm-up: 4 short requests with the pinned template date; results are discarded."""
+    """Untimed warm-up: 4 short requests with the pinned template date; results are discarded.
+    Not used for the reuse config (turn 1 must be cold and the probe shares the template header).
+    Raises if every probe request fails."""
     async def go():
         t0 = time.perf_counter()
         async with httpx.AsyncClient(timeout=120) as client:
-            for p in prompts[:4]:
-                await loadgen.one_request(client, URLS[engine], MODEL, loadgen._messages(p), 16, t0)
-    asyncio.run(go())
+            return [await loadgen.one_request(client, URLS[engine], MODEL, loadgen._messages(p), 16, t0)
+                    for p in prompts[:4]]
+    recs = asyncio.run(go())
+    if recs and not any(r.ok for r in recs):
+        raise RuntimeError(f"all probe requests failed: {recs[0].error}")
 
 
 def execute_group(group, out: Path, prompts, warmup_s, measure_s) -> int:
@@ -447,7 +455,8 @@ def execute_group(group, out: Path, prompts, warmup_s, measure_s) -> int:
     try:
         start_server(first.engine, first.config)
         wait_healthy(first.engine)
-        probe(first.engine, prompts)
+        if first.config != "reuse":  # reuse turn 1 must be cold; see probe()
+            probe(first.engine, prompts)
     except Exception as e:  # noqa: BLE001
         for run in group:
             record_failure(run, out, e)

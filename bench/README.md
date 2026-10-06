@@ -34,6 +34,9 @@ docker compose -f bench/docker-compose.yml down
 
 Filled in by later tasks.
 
+`run_all.py` sends 4 untimed `max_tokens 16` probe requests after each server start (main and kvfull) to remove
+first-request JIT and clock-ramp effects. The reuse config skips the probe so its turn 1 is cold.
+
 ## Outputs
 
 Filled in by later tasks.

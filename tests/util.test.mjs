@@ -39,6 +39,7 @@ test('pickPair honours two registered, different engines', () => {
 
 test('pickPair falls back to the first registered pair', () => {
   const c = loadContext(root, ['assets/compare/util.js']);
+  c.RT.pairs = {};  // the site's own pair file is loaded too; this test needs the first one registered here
   for (const id of ['a', 'b', 'c']) c.RT.registerEngine(eng(id));
   c.RT.registerPair({ ids: ['b', 'c'], verdict: { a: [], b: [] }, answers: {}, stageSummaries: {} });
   assert.deepEqual(c.RTU.pickPair('', c.RT), ['b', 'c']);

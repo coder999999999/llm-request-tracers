@@ -26,8 +26,8 @@ const ctx = {
 };
 const fullCtx = { ...ctx, bench: { 'llama-cpp': llamaBench, vllm: vllmBenchFull } };
 
-// Removes code and tooltip text, which carry text copied verbatim from the tracers.
-const prose = (html) => html.replace(/<code>[\s\S]*?<\/code>/g, '').replace(/<title>[\s\S]*?<\/title>/g, '');
+// Removes code, which carries function names copied verbatim from the tracers.
+const prose = (html) => html.replace(/<code>[\s\S]*?<\/code>/g, '');
 
 test('evidence shows empty state when one engine has no bench', () =>
   assert.match(RTR.evidence(q1, { ...ctx, bench: { vllm: vllmBench } }), /Benchmark running, results soon/));
@@ -175,6 +175,25 @@ test('chapter stage bar uses reported numbers and labels how each was measured',
   assert.match(html, />22 ms</);
   assert.match(html, /queue \+ overhead/);
   assert.match(html, /at 32 users/);
+});
+
+test('stage row prints the gap between the engines, from bench data', () => {
+  const wait = RTR.stageRow('wait', ctx);
+  assert.match(wait, /<span class="gap">vLLM 18 ms faster<\/span>/);
+  const think = RTR.stageRow('think', ctx);
+  assert.match(think, /<span class="gap">About even<\/span>/);
+});
+
+test('gap names the faster engine, whichever side it is on', () => {
+  const swapped = { ...ctx, a: vllm, b: llama };
+  assert.match(RTR.stageRow('wait', swapped), /vLLM 18 ms faster/);
+  assert.doesNotMatch(RTR.stageRow('wait', swapped), /llama\.cpp [\d.,]+ (ms|s) faster/);
+});
+
+test('stage row without bench shows the empty state and no gap', () => {
+  const html = RTR.stageRow('wait', { ...ctx, bench: {} });
+  assert.match(html, /Benchmark running, results soon/);
+  assert.doesNotMatch(html, /class="gap"|faster|About even/);
 });
 
 test('stage bar falls back to the empty state without bench', () =>

@@ -121,6 +121,14 @@
   var STAGE_BAR = { wait: 'Time spent waiting for a turn', think: 'Time spent reading the prompt before the first token' };
   var NOTE = { reported: 'reported by the server', derived: 'derived', 'queue + overhead': 'queue + overhead' };
 
+  // The difference between the two engines for one stage, from bench numbers only.
+  // Within 10% of the larger value counts as even.
+  function gapText(ctx, msA, msB) {
+    var diff = Math.abs(msA - msB);
+    if (diff <= 0.1 * Math.max(msA, msB)) return 'About even';
+    return (msA < msB ? ctx.a : ctx.b).name + ' ' + RTU.fmtMs(diff) + ' faster';
+  }
+
   RTR.stageBar = function (stageId, ctx) {
     if (!STAGE_BAR[stageId]) return '';
     var blocks = '';
@@ -139,7 +147,7 @@
           '<span class="track"><i style="width:' + r1(Math.min(100, Math.max(1, ms / max * 100))) + '%;background:' + col(p[0].color) + '"></i></span>' +
           '<span class="v">' + esc(RTU.fmtMs(ms)) + '</span>';
       });
-      blocks += '</div>';
+      blocks += '<span class="gap">' + esc(gapText(ctx, ta[stageId].ms, tb[stageId].ms)) + '</span></div>';
     });
     return blocks || empty();
   };
@@ -286,7 +294,7 @@
     });
     s += '</svg>';
     var cap = '<figcaption>' + pair(ctx).map(function (e) {
-      return '<b style="color:' + col(e.color) + '">' + esc(e.name) + '</b> ' + esc(e.shape);
+      return '<b style="color:' + col(e.color) + '">' + esc(e.name) + '</b>: ' + esc(e.shape);
     }).join(' ') + '</figcaption>';
     return '<figure><div class="fig-h"><h3>Where the request changes thread or process</h3></div>' + s + cap + '</figure>';
   }
@@ -372,8 +380,10 @@
     var horizontal = !!(opts && opts.horizontal);
     var engines = pair(ctx);
     var w, h, laneAt, stagePos;
+    // Strip geometry: a lane-name gutter, then one column per stage. Kept narrow so
+    // the text stays near 12px when the strip is scaled into a 358px phone column.
+    var x0 = 80, cw = 88;
     if (horizontal) {
-      var x0 = 96, cw = 112;
       w = x0 + n * cw; h = 168;
       laneAt = function (i) { return 52 + i * 48; };
       stagePos = function (i) { return x0 + i * cw + cw / 2; };
@@ -390,7 +400,7 @@
       var c = col(e.color), p = laneAt(i);
       if (horizontal) {
         s += '<text x="0" y="' + (p + 5) + '" font-weight="600" font-size="14" fill="' + c + '">' + esc(e.name) + '</text>';
-        s += '<line x1="' + 96 + '" x2="' + (w - 8) + '" y1="' + p + '" y2="' + p + '" stroke="' + c + '" stroke-width="2"/>';
+        s += '<line x1="' + x0 + '" x2="' + (w - 8) + '" y1="' + p + '" y2="' + p + '" stroke="' + c + '" stroke-width="2"/>';
       } else {
         s += '<text x="' + p + '" y="14" text-anchor="middle" font-weight="600" font-size="14" fill="' + c + '">' + esc(e.name) + '</text>';
         s += '<line x1="' + p + '" x2="' + p + '" y1="32" y2="' + (h - 36) + '" stroke="' + c + '" stroke-width="2"/>';
@@ -400,7 +410,7 @@
       var sp = stagePos(i), on = st.id === activeStageId;
       s += '<g class="rtr-st" data-stage="' + esc(st.id) + '"' + (on ? ' data-active="true"' : '') + ' tabindex="0" role="link" aria-label="' + esc(st.name) + '">';
       if (horizontal) {
-        s += '<rect x="' + (96 + i * 112) + '" y="0" width="112" height="' + (h - 24) + '" fill="transparent"/>';
+        s += '<rect x="' + (x0 + i * cw) + '" y="0" width="' + cw + '" height="' + (h - 24) + '" fill="transparent"/>';
         s += '<text x="' + sp + '" y="14" text-anchor="middle" font-size="14" class="rtr-name">' + esc(st.name) + '</text>';
       } else {
         s += '<rect x="0" y="' + (sp - 40) + '" width="' + w + '" height="96" fill="transparent"/>';

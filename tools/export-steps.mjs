@@ -79,6 +79,12 @@ const CHECK_OVERRIDES = {
   'vllm:45': 'yield f',                                   // the SSE data line
 };
 
+// 'engine:n' -> title. The tracers use arrows and dots in a few titles; the page
+// rules ban them in prose, so those titles are respelled here.
+const TITLE_OVERRIDES = {
+  'llama-cpp:9': 'Request to task params',
+};
+
 function defaultCheck(fn) {
   const ids = String(fn).split(/→|::|\.|\s+/).join(' ').match(/[A-Za-z_][A-Za-z0-9_]*/g);
   return ids ? ids[ids.length - 1] : String(fn);
@@ -160,7 +166,7 @@ async function main() {
         byStage[stage] = [];
         for (let n = from; n <= to; n++) {
           const p = parseStep(id, steps[n]);
-          const entry = { n, ...p, check: CHECK_OVERRIDES[`${id}:${n}`] || defaultCheck(p.fn) };
+          const entry = { n, ...p, title: TITLE_OVERRIDES[`${id}:${n}`] || p.title, check: CHECK_OVERRIDES[`${id}:${n}`] || defaultCheck(p.fn) };
           if (spec.key.includes(n)) entry.key = true;
           if (spec.hops[n]) { entry.hop = spec.hops[n][0]; entry.hopText = spec.hops[n][1]; }
           byStage[stage].push(entry);

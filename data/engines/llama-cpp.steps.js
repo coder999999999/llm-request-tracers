@@ -8,7 +8,7 @@ RT.addSteps("llama-cpp", {
     { n: 6, title: "Chat template render", fn: "common_chat_templates_apply", file: "common/chat.cpp", line: 1440, check: "common_chat_templates_apply", key: true },
     { n: 7, title: "Completion task builder", fn: "handle_completions_impl", file: "tools/server/server-context.cpp", line: 4476, check: "handle_completions_impl" },
     { n: 8, title: "Tokenizer", fn: "tokenize_input_prompts → llama_tokenize", file: "tools/server/server-common.cpp", line: 1015, check: "tokenize_input_prompts", key: true },
-    { n: 9, title: "Request → task params", fn: "server_schema::eval_llama_cmpl_schema", file: "tools/server/server-schema.cpp", line: 519, check: "eval_llama_cmpl_schema" }
+    { n: 9, title: "Request to task params", fn: "server_schema::eval_llama_cmpl_schema", file: "tools/server/server-schema.cpp", line: 519, check: "eval_llama_cmpl_schema" }
   ],
   wait: [
     { n: 10, title: "Post to inference queue", fn: "rd.post_tasks → server_queue::post", file: "tools/server/server-queue.cpp", line: 525, check: "post", key: true },

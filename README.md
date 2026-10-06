@@ -30,7 +30,7 @@ The site renders from `data/`:
 - `pairs/<a>--<b>.js`: Comparison data between two engines (differences, insights, etc.).
 - `bench/`: Benchmark results (generated later by `bench/to-site.mjs`; not present yet).
 
-To add an engine: create an engine file, generate steps from its tracer page, add pair files for each existing engine, and run the checks.
+To add an engine: create the engine file, generate its steps from its tracer page with `node tools/export-steps.mjs`, add a pair file for each comparison, generate its bench files with the benchmark harness (`bench/to-site.mjs`), then run the checks.
 
 ## Checks
 

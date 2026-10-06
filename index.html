@@ -3,224 +3,322 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>One Request, Traced</title>
-<meta name="description" content="What happens to your prompt after you press Enter? Short films and step-through maps of one chat request through llama.cpp and vLLM.">
-<meta property="og:title" content="One Request, Traced">
-<meta property="og:description" content="Short films and step-through maps of one chat request through llama.cpp and vLLM.">
+<title>llama.cpp or vLLM, One Request, Traced</title>
+<meta name="description" content="The same chat request, sent to llama.cpp and vLLM on one RTX 4090. Followed through their source, and timed.">
+<meta property="og:title" content="llama.cpp or vLLM">
+<meta property="og:description" content="The same chat request, sent to llama.cpp and vLLM on one RTX 4090. Followed through their source, and timed.">
 <meta property="og:image" content="assets/preview-llama-cpp-video.webp">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* The page borrows the film series' look: cream stock, ink, one amber thread.
-   The tracers themselves are dark, so they sit on a dark band like screens pinned to the paper. */
+/* Tokens follow mockups/v4-polished.html. Spacing uses 4, 8, 12, 16, 24, 32, 48, 64 and 96 only.
+   Archivo Narrow is for the H1 and chapter H2s, Archivo for everything else, IBM Plex Mono for code and file:line. */
 :root{
-  --paper:#efe9dc; --paper-2:#e5dece; --card:#f7f3ea;
-  --ink:#1c1a16; --ink-2:#48443b; --ink-3:#6f695c; --rule:#d3cab6;
-  --thread:#e0962a; --thread-ink:#8a4f00; --riso:#2e4bc6; --pin:#c8352b;
-  --night:#0c0f14; --night-2:#141920; --night-line:#252d38; --night-fg:#e3e8ef; --night-fg-2:#a4aebc;
-  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --bg:#f7f6f2; --ink:#121212; --ink2:#4b4b48; --ink3:#86847d; --rule:#e2dfd6; --rule2:#121212;
+  --a:#d9662a; --b:#2b54d0;
+  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Archivo Narrow","Arial Narrow",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
-html{background:var(--paper)}
-body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.6 var(--sans);-webkit-font-smoothing:antialiased;font-feature-settings:"kern","liga"}
 a{color:inherit}
-:focus-visible{outline:2px solid var(--riso);outline-offset:3px;border-radius:3px}
-code{font:.86em var(--mono)}
-h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:2px}
+h1,h2,h3,h4{margin:0}
 img{display:block;max-width:100%;height:auto}
-.wrap{max-width:1160px;margin:0 auto;padding-inline:32px}
+code{font:13.5px var(--mono)}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:48px}
 @media (max-width:600px){.wrap{padding-inline:16px}}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
-/* top */
-.top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-block:22px}
-.mark{font:italic 22px var(--serif);text-decoration:none}
-.top nav{display:flex;gap:22px;font-size:14px}
-.top nav a{text-decoration:none;color:var(--ink-2)}
+/* top bar */
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 32px;min-height:64px;padding-block:12px;border-bottom:2px solid var(--rule2)}
+.brand{font:700 15px var(--sans);letter-spacing:-.005em;text-decoration:none}
+.top-r{display:flex;flex-wrap:wrap;align-items:center;gap:8px 32px}
+.top nav{display:flex;flex-wrap:wrap;gap:8px 32px;font-size:15px;color:var(--ink2)}
+.top nav a{text-decoration:none}
 .top nav a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:4px}
-@media (max-width:600px){.top nav{display:none}}
+#picker{display:flex;gap:8px}
+#picker:empty{display:none}
+#picker select{font:500 15px var(--sans);color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:2px;padding:4px 8px}
+#picker select:hover{border-color:var(--ink)}
+@media (max-width:600px){.top nav{gap:8px 16px;font-size:14px}.top-r{gap:8px 16px}}
 
 /* hero */
-.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:56px;align-items:center;padding-block:48px 72px}
-@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);gap:36px;padding-block:24px 56px}}
-.hero h1{font:400 clamp(44px,6vw,76px)/.98 var(--serif);letter-spacing:-.01em}
-.hero h1 em{color:var(--riso)}
-.lede{margin:22px 0 0;font-size:19px;color:var(--ink-2);max-width:34ch}
-.actions{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-top:32px}
-.btn{display:inline-flex;align-items:center;gap:10px;font:500 16px var(--sans);text-decoration:none;border-radius:999px;padding:12px 22px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer}
-.btn:hover{background:#000}
-.btn.ghost{background:transparent;color:var(--ink)}
-.btn.ghost:hover{background:var(--paper-2)}
-.btn svg{flex:none}
+.hero{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:64px;padding-block:96px 64px}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);gap:48px;padding-block:48px}}
+.hero h1{font:700 clamp(56px,8.5vw,112px)/.88 var(--display);letter-spacing:-.025em;text-transform:uppercase;overflow-wrap:anywhere}
+.hero h1 .a{color:var(--a)}
+.hero h1 .b{color:var(--b)}
+.hero h1 small{display:block;font:500 .38em var(--sans);letter-spacing:0;color:var(--ink3);margin:12px 0 8px;text-transform:none}
+.dek{margin:32px 0 0;font-size:21px;line-height:1.5;color:var(--ink2);max-width:28em}
+.watch{margin:24px 0 0;font-size:17px}
+.watch a{font-weight:600;text-decoration-thickness:1px;text-underline-offset:4px}
+.watch a:hover{text-decoration-thickness:2px}
+.verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:48px}
+@media (max-width:600px){.verdict{grid-template-columns:minmax(0,1fr)}}
+.verdict h3{font:700 15px var(--sans);padding-bottom:8px;border-bottom:2px solid var(--rule2)}
+.verdict ul{list-style:none;margin:0;padding:0}
+.verdict li{padding:12px 0;border-bottom:1px solid var(--rule);font-size:16px}
+.qs{list-style:none;margin:0;padding:0;align-self:end;border-top:2px solid var(--rule2)}
+.qs li{border-bottom:1px solid var(--rule)}
+.qs a{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;padding:16px 0;text-decoration:none;font:600 19px/1.35 var(--sans)}
+.qs a span{color:var(--ink3);font-weight:500;font-variant-numeric:tabular-nums}
+.qs a:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+.qs b{font-weight:600}
 
-/* the video thumbnail: a print taped to the page */
-.reel{position:relative;margin:0}
-.reel button{all:unset;display:block;position:relative;cursor:pointer;width:100%;transform:rotate(1.2deg);transition:transform .25s}
-.reel button:hover{transform:rotate(0deg) scale(1.01)}
-.reel button:focus-visible{outline:2px solid var(--riso);outline-offset:6px}
-.reel img{width:100%;aspect-ratio:16/9;object-fit:cover;box-shadow:0 1px 0 var(--rule),0 18px 40px -18px rgba(40,30,10,.45)}
-.reel .tape{position:absolute;top:-12px;width:92px;height:26px;background:rgba(232,220,180,.75);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.reel .tape.l{left:18px;transform:rotate(-6deg)}
-.reel .tape.r{right:18px;transform:rotate(5deg)}
-.play{position:absolute;left:18px;bottom:18px;display:inline-flex;align-items:center;gap:10px;padding:10px 18px 10px 14px;border-radius:999px;background:var(--ink);color:var(--paper);font:500 15px var(--sans);box-shadow:0 6px 18px -6px rgba(0,0,0,.5);transition:transform .2s}
-.reel button:hover .play{transform:scale(1.07)}
-.reel figcaption{margin-top:18px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;font-size:15px;color:var(--ink-2)}
-.reel figcaption b{font:italic 22px var(--serif);color:var(--ink);font-weight:400}
-@media (prefers-reduced-motion:reduce){.reel button,.play{transition:none}.reel button:hover{transform:rotate(1.2deg)}}
+/* chapters */
+.chapter{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding-block:48px 64px;border-top:2px solid var(--rule2)}
+.chapter>div{min-width:0}
+@media (min-width:1100px){.chapter{grid-template-columns:minmax(0,1fr) 280px;gap:96px;padding-block:64px 96px}}
+.num{font:700 15px var(--sans);color:var(--ink3);font-variant-numeric:tabular-nums}
+.chapter h2{margin:12px 0 24px;font:700 clamp(36px,5vw,60px)/.95 var(--display);letter-spacing:-.02em;text-transform:uppercase;max-width:13em;overflow-wrap:anywhere}
+.ans{margin:0 0 48px;font-size:22px;line-height:1.5;max-width:31em;color:var(--ink)}
+@media (max-width:600px){.ans{font-size:19px}}
+.chapter h2 + figure{margin-top:48px}
+.chapter h2 + .ans + figure{margin-top:0}
 
-/* section heads */
-.sec{padding-block:64px}
-.head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;margin-bottom:28px}
-.head h2{font:400 clamp(34px,4vw,46px)/1.05 var(--serif)}
-.head p{margin:0;color:var(--ink-2);max-width:46ch}
+figure{margin:0}
+.fig-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 24px}
+.fig-h h3{font:600 17px var(--sans)}
+.fig-h p{margin:0;font-size:14px;color:var(--ink3)}
+figcaption{margin-top:12px;font-size:14px;color:var(--ink3)}
+figure svg{margin-top:12px}
 
-/* series */
-.series{border-top:1.5px solid var(--ink)}
-.eps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;list-style:none;margin:0;padding:0}
-@media (max-width:980px){.eps{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:520px){.eps{grid-template-columns:minmax(0,1fr)}}
-.ep{padding:20px 20px 24px 0;border-bottom:1px solid var(--rule);display:grid;gap:6px;align-content:start;min-width:0}
-.ep + .ep{padding-left:20px;border-left:1px solid var(--rule)}
-@media (max-width:980px){.ep + .ep{padding-left:0;border-left:0}.ep:nth-child(even){padding-left:20px;border-left:1px solid var(--rule)}}
-@media (max-width:520px){.ep:nth-child(even){padding-left:0;border-left:0}}
-.ep .n{font:500 12px var(--mono);color:var(--ink-3);letter-spacing:.04em}
-.ep h3{font:400 26px/1.1 var(--serif)}
-.ep p{margin:0;font-size:15px;color:var(--ink-2)}
-.ep .st{margin-top:6px;font:500 12px var(--mono);color:var(--ink-3)}
-.ep.now .n{color:var(--thread-ink)}
-.ep.now .st a{color:var(--riso);font-weight:500}
-.ep.later h3{color:var(--ink-2)}
-.next-series{margin:22px 0 0;font-size:15px;color:var(--ink-2)}
-.next-series b{font:italic 20px var(--serif);color:var(--ink);font-weight:400}
+.empty{margin:0;padding:24px 0;font-size:15px;color:var(--ink2);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+figure .empty{margin-top:12px}
+.stagebar + .empty,.fig-h + .empty{margin-top:48px}
+.sums + .empty{margin-top:32px}
+figure:has(.empty) + .empty{display:none}
+.none{color:var(--ink2)}
 
-/* tools on a dark band */
-.band{background:var(--night);color:var(--night-fg);padding-block:72px 80px}
-.band .head p{color:var(--night-fg-2)}
-.tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-@media (max-width:900px){.tools{grid-template-columns:minmax(0,1fr)}}
-.tool{display:grid;align-content:start;background:var(--night-2);border:1px solid var(--night-line);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;transition:border-color .2s}
-.tool:hover{border-color:var(--thread)}
-.tool.lead{grid-column:1 / -1;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);align-items:center}
-.tool.lead img{border-bottom:0;border-right:1px solid var(--night-line);height:100%}
-.tool.lead .b{padding:32px 36px}
-@media (max-width:900px){.tool.lead{grid-template-columns:minmax(0,1fr)}.tool.lead img{height:auto;border-right:0;border-bottom:1px solid var(--night-line)}.tool.lead .b{padding:20px 22px 22px}}
-.tool img{width:100%;aspect-ratio:16/10;object-fit:cover;border-bottom:1px solid var(--night-line)}
+.stagebar{display:grid;grid-template-columns:110px minmax(0,1fr) 72px;gap:8px 16px;align-items:center;margin-top:48px;padding-top:24px;border-top:1px solid var(--rule);font-size:15px}
+.stagebar + .stagebar{margin-top:24px}
+.stagebar .lbl{font-weight:600}
+.stagebar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.stagebar .track{height:10px;background:#ebe8df;border-radius:2px;overflow:hidden}
+.stagebar .track i{display:block;height:100%}
+.stagebar .hd{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:14px;color:var(--ink3);margin-bottom:4px}
+.stagebar .gap{grid-column:1/-1;margin-top:4px;font-size:15px;font-weight:600}
+@media (max-width:600px){.stagebar{grid-template-columns:88px minmax(0,1fr) 64px}}
 
-.tool .b{padding:20px 22px 22px;display:grid;gap:6px}
-.tool .eng{font:500 12.5px var(--mono);color:var(--night-fg-2)}
-.tool h3{font:400 30px/1.1 var(--serif)}
-.tool.lead h3{font-size:38px}
-.tool:not(.lead) h3{font-size:26px}
-.tool p{margin:0;color:var(--night-fg-2);font-size:15.5px;max-width:48ch}
-.tool .go{margin-top:10px;font:500 15px var(--sans);color:var(--thread)}
-.tool .go::after{content:" →";display:inline-block;transition:transform .2s}
-.tool:hover .go::after{transform:translateX(3px)}
-.how{margin:28px 0 0;font-size:14.5px;color:var(--night-fg-2)}
-kbd{font:500 12px var(--mono);color:var(--night-fg);border:1px solid var(--night-line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
-@media (prefers-reduced-motion:reduce){.tool,.tool .go::after{transition:none}}
+.stage-h{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule)}
+.stage-h + .paths{margin-top:24px}
+.paths{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px;margin-top:64px}
+@media (max-width:760px){.paths{grid-template-columns:minmax(0,1fr);gap:32px}}
+.path{min-width:0}
+.path h4,.sum h4{margin:0 0 8px;font:700 15px var(--sans)}
+.path h4 em,.sum h4 em{font-style:normal;font-weight:400;color:var(--ink3)}
+.step{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;padding:12px 0;border-top:1px solid var(--rule)}
+.step b{font-weight:600;font-size:16px}
+.step code{grid-column:1/-1;color:var(--ink2);overflow-wrap:anywhere}
+.src{font:13px var(--mono);color:var(--ink2);text-decoration:none;white-space:nowrap}
+.step .src{text-align:right}
+.src:hover{color:var(--ink);text-decoration:underline}
+.cross{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:14px;color:var(--ink2);border-top:1px solid var(--rule)}
+.cross::before{content:"";flex:none;width:16px;border-top:2px dashed currentColor}
+.path details{margin-top:8px}
+summary{cursor:pointer;font-size:15px;font-weight:600;padding:8px 0}
+summary:hover{text-decoration:underline;text-underline-offset:4px}
 
-/* comparison */
-.cmp{width:100%;border-collapse:collapse}
-.cmp th,.cmp td{text-align:left;vertical-align:top;padding:16px 20px 16px 0;border-top:1px solid var(--rule)}
-.cmp thead td{border-top:0}
-.cmp thead th{border-top:0;padding-top:0;font:italic 24px var(--serif);font-weight:400}
-.cmp tbody th{width:22%;font:500 15px var(--sans)}
-.cmp td{color:var(--ink-2);font-size:16px}
+.facts{margin-top:64px;border-top:2px solid var(--rule2)}
+.facts .r{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);gap:32px;padding:16px 0;border-bottom:1px solid var(--rule);font-size:16px}
+.facts .r b{font-weight:600}
+.facts .h{font-size:14px;color:var(--ink3);padding:12px 0}
+.facts .src{display:block;margin-top:4px;white-space:normal;overflow-wrap:anywhere}
 @media (max-width:700px){
-  .cmp thead{display:none}
-  .cmp,.cmp tbody,.cmp tr,.cmp th,.cmp td{display:block;width:auto}
-  .cmp tr{border-top:1px solid var(--rule);padding-block:14px}
-  .cmp th,.cmp td{border:0;padding:0}
-  .cmp td{margin-top:6px}
-  .cmp td::before{content:attr(data-k) " — ";font:italic 18px var(--serif);color:var(--ink)}
+  .facts .r{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
+  .facts .r b{grid-column:1/-1}
+  .facts .r.h span:first-child{display:none}
 }
+.links{display:flex;flex-wrap:wrap;gap:16px 32px;margin-top:32px;font-size:15px}
+.links a{font-weight:600;text-decoration-thickness:1px;text-underline-offset:4px}
+.links a:hover{text-decoration-thickness:2px}
 
-footer{border-top:1.5px solid var(--ink);padding-block:28px 56px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px 48px;font-size:14.5px;color:var(--ink-2)}
+aside.track{display:none;position:sticky;top:32px;align-self:start;padding-top:4px}
+aside.track svg{display:block;width:100%}
+@media (min-width:1100px){aside.track{display:block}.track-strip{display:none}}
+.track-strip{margin:0 0 32px}
+
+/* every stage */
+.sec{border-top:2px solid var(--rule2);padding-block:48px 64px}
+@media (min-width:900px){.sec{padding-block:64px 96px}}
+.sec h2{font:700 32px/1.1 var(--sans);letter-spacing:-.01em}
+.sec .lede{margin:12px 0 48px;font-size:19px;line-height:1.5;color:var(--ink2);max-width:32em}
+.stage-row{padding:32px 0;border-bottom:1px solid var(--rule);scroll-margin-top:24px}
+.every-stage{border-top:2px solid var(--rule2)}
+.stage-row:focus{outline:none}
+.sums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px;margin-top:24px}
+@media (max-width:760px){.sums{grid-template-columns:minmax(0,1fr);gap:24px}}
+.sum p{margin:0;font-size:16px;color:var(--ink2);max-width:32em}
+.stage-row .stagebar{margin-top:32px}
+.stage-row>details{margin-top:24px}
+.stage-row .paths,.stage-row .facts{margin-top:24px}
+.stage-row .paths + .facts{margin-top:48px}
+
+/* tracers */
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:48px 32px;margin-top:48px}
+@media (max-width:760px){.tools{grid-template-columns:minmax(0,1fr)}}
+.tool{display:block;text-decoration:none}
+.tool img{width:100%;aspect-ratio:16/10;object-fit:cover;border:1px solid var(--rule)}
+.tool h3{margin:16px 0 0;font:600 19px/1.35 var(--sans)}
+.tool:hover h3{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+.tool p{margin:8px 0 0;font-size:16px;color:var(--ink2)}
+.tool .go{display:block;margin-top:12px;font-size:15px;font-weight:600;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
+.how{margin:32px 0 0;font-size:15px;color:var(--ink2)}
+
+/* films */
+.films{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:64px;align-items:start}
+@media (max-width:900px){.films{grid-template-columns:minmax(0,1fr);gap:32px}}
+.reel button{all:unset;display:block;position:relative;cursor:pointer;width:100%}
+.reel button:focus-visible{outline:2px solid var(--ink);outline-offset:4px}
+.reel img{width:100%;aspect-ratio:16/9;object-fit:cover}
+.reel .play{position:absolute;left:16px;bottom:16px;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--bg);transition:transform .2s}
+.reel button:hover .play{transform:scale(1.12)}
+@media (prefers-reduced-motion:reduce){.reel .play{transition:none}.reel button:hover .play{transform:none}}
+.eps{list-style:none;margin:0;padding:0;border-top:2px solid var(--rule2)}
+.ep{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px 16px;padding:16px 0;border-bottom:1px solid var(--rule)}
+.ep .n{color:var(--ink3);font-weight:500;font-variant-numeric:tabular-nums}
+.ep h3{font:600 19px/1.35 var(--sans)}
+.ep p{margin:4px 0 0;font-size:16px;color:var(--ink2)}
+.ep .meta{font-size:14px;color:var(--ink3)}
+.ep .st{font-size:15px;color:var(--ink3);white-space:nowrap;text-align:right}
+.ep.now .st a{color:var(--ink);font-weight:600;text-underline-offset:4px}
+@media (max-width:600px){.ep{grid-template-columns:32px minmax(0,1fr)}.ep .st{grid-column:2;text-align:left}}
+.next-series{margin:32px 0 0;font-size:16px;color:var(--ink2)}
+.next-series b{font-weight:600;color:var(--ink)}
+
+/* method */
+.spec{margin:0;border-top:2px solid var(--rule2)}
+.spec>div{display:grid;grid-template-columns:150px minmax(0,1fr);gap:32px;padding:16px 0;border-bottom:1px solid var(--rule)}
+@media (max-width:600px){.spec>div{grid-template-columns:minmax(0,1fr);gap:4px}}
+.spec dt{font-weight:600;font-size:16px}
+.spec dd{margin:0;font-size:16px;color:var(--ink2)}
+.spec dd a{text-underline-offset:4px;text-decoration-thickness:1px}
+.spec dd a:hover{text-decoration-thickness:2px}
+.more{margin:32px 0 0;font-size:16px;color:var(--ink2);max-width:32em}
+
+footer{border-top:2px solid var(--rule2);padding-block:32px 64px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 48px;font-size:15px;color:var(--ink2)}
 @media (max-width:760px){footer{grid-template-columns:minmax(0,1fr)}}
-footer p{margin:0}
+footer p{margin:0;max-width:32em}
 
 /* player */
 dialog{padding:0;border:0;background:transparent;max-width:min(1100px,94vw);width:100%}
 dialog::backdrop{background:rgba(12,10,6,.82)}
 .player{display:grid;gap:12px}
-.player video{display:block;width:100%;height:auto;max-height:82vh;aspect-ratio:16/9;background:#000;border-radius:6px}
-.player-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 20px;color:#e9e3d6;font-size:14px}
-.player-bar small{color:#b4ad9e;font-size:12.5px}
-.close{all:unset;cursor:pointer;font:500 14px var(--sans);color:#e9e3d6;padding:6px 2px}
-.close:hover{text-decoration:underline}
+.player video{display:block;width:100%;height:auto;max-height:82vh;aspect-ratio:16/9;background:#000}
+.player-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 24px;color:#f7f6f2;font-size:15px}
+.player-bar a{color:#f7f6f2}
+.close{all:unset;cursor:pointer;font:600 15px var(--sans);color:#f7f6f2;text-decoration:underline;text-underline-offset:4px}
+.close:focus-visible,.player-bar a:focus-visible{outline:2px solid #f7f6f2;outline-offset:4px}
 </style>
 </head>
 <body>
 
 <div class="wrap">
   <header class="top">
-    <a class="mark" href="index.html">One Request, Traced</a>
-    <nav aria-label="Sections"><a href="#series">Episodes</a><a href="#tools">Tracers</a><a href="#compare">llama.cpp vs vLLM</a></nav>
+    <a class="brand" href="index.html">One Request, Traced</a>
+    <div class="top-r">
+      <div id="picker"></div>
+      <nav aria-label="Sections"><a href="#chapters">Comparison</a><a href="#deep-dives">Tracers</a><a href="#films">Films</a><a href="#method">Method</a></nav>
+    </div>
   </header>
 
   <section class="hero">
     <div>
-      <h1>What happens to your prompt after you press <em>Enter?</em></h1>
-      <p class="lede">One chat request, followed through the source of llama.cpp and vLLM, from the HTTP thread to the GPU and back. The films tell the story. The tracers let you step through it.</p>
-      <div class="actions">
-        <button class="btn" type="button" data-play>
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg>
-          Watch Episode 1
-        </button>
-        <a class="btn ghost" href="llama-cpp.html">Open the tracer</a>
-      </div>
+      <h1><span class="a">llama.cpp</span><small>or</small><span class="b">vLLM</span></h1>
+      <p class="dek">The same chat request, sent to both servers on one RTX 4090. Followed through their source, and timed.</p>
+      <p class="watch"><a href="video/llama-cpp-request-trace.mp4" data-play>Watch Episode 1 (1:44)</a></p>
+      <div id="verdict"></div>
     </div>
-
-    <figure class="reel">
-      <span class="tape l" aria-hidden="true"></span><span class="tape r" aria-hidden="true"></span>
-      <button type="button" data-play aria-label="Play Episode 1, The Trip, 1 minute 44 seconds">
-        <img src="assets/preview-llama-cpp-video.webp" width="1920" height="1080" alt="Title card: One request, traced. Episode 1. A typed prompt reads Why is the sky blue?">
-        <span class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg>Play · 1:44</span>
-      </button>
-      <figcaption><b>Episode 1 · The Trip</b><span>One Request, Traced · llama.cpp</span></figcaption>
-    </figure>
+    <ol class="qs">
+      <li><a href="#q1"><span>1</span><b>Why does vLLM pull ahead once many people are chatting?</b></a></li>
+      <li><a href="#q2"><span>2</span><b>Who reuses your prompt better?</b></a></li>
+      <li><a href="#q3"><span>3</span><b>Where does your request cross a thread or process boundary?</b></a></li>
+      <li><a href="#q4"><span>4</span><b>What happens when the KV cache runs out of room?</b></a></li>
+    </ol>
   </section>
+
+  <div id="chapters"><noscript><p class="empty">The comparison is drawn by a script. Enable JavaScript to read it, or open either tracer directly.</p></noscript></div>
 </div>
 
-<section class="sec" id="series" aria-labelledby="h-series">
-  <div class="wrap">
-    <div class="head">
-      <h2 id="h-series">The series</h2>
-      <p>Each episode answers one question about your own request, in under two minutes.</p>
+<section class="wrap" id="every-stage" aria-labelledby="h-every">
+  <div class="sec">
+    <h2 id="h-every">Every stage</h2>
+    <p class="lede">All four stages in one place, including Speak, which no question owns. Open a row for the code path and the feature table.</p>
+    <div id="every-stage-rows"></div>
+  </div>
+</section>
+
+<section class="wrap" id="deep-dives" aria-labelledby="h-tools">
+  <div class="sec">
+    <h2 id="h-tools">The tracers</h2>
+    <p class="lede">Interactive maps of the real code. Press Trace and the request walks itself, one function at a time, each linked to its source line.</p>
+    <div class="tools">
+      <a class="tool" href="llama-cpp.html">
+        <img src="assets/close-llama-cpp.webp" width="960" height="600" alt="Close-up of the llama.cpp tracer on step 13, Pick a slot, with the step card explaining it" loading="lazy">
+        <h3>llama.cpp tracer</h3>
+        <p>C++, 53 steps. One process, one inference thread. Watch the request get a slot, run through ggml on the GPU and stream back.</p>
+        <span class="go">Open the tracer</span>
+      </a>
+      <a class="tool" href="vllm.html">
+        <img src="assets/close-vllm.webp" width="960" height="600" alt="Close-up of the vLLM tracer on step 18, Schedule, next to Admit waiting request" loading="lazy">
+        <h3>vLLM tracer</h3>
+        <p>Python, 59 steps. Two processes over ZMQ, a token-budget scheduler and a paged KV cache.</p>
+        <span class="go">Open the tracer</span>
+      </a>
+      <a class="tool" href="vllm-module-graph.html">
+        <img src="assets/close-vllm-module-graph.webp" width="960" height="600" alt="Close-up of the vLLM module graph on step 4, ZMQ hand-off to the engine core" loading="lazy">
+        <h3>vLLM module map</h3>
+        <p>Zoomed out, 18 steps. The same trip drawn across vLLM's 164 modules.</p>
+        <span class="go">Open the map</span>
+      </a>
     </div>
-    <div class="series">
+    <p class="how">Step with the arrow keys, click any box for details. Best on a laptop or bigger.</p>
+  </div>
+</section>
+
+<section class="wrap" id="films" aria-labelledby="h-films">
+  <div class="sec">
+    <h2 id="h-films">The films</h2>
+    <p class="lede">Each episode answers one question about your own request, in under two minutes.</p>
+    <div class="films">
+      <figure class="reel">
+        <button type="button" data-play aria-label="Play Episode 1, The Trip, 1 minute 44 seconds">
+          <img src="assets/preview-llama-cpp-video.webp" width="1920" height="1080" alt="Title card: One request, traced. Episode 1. A typed prompt reads Why is the sky blue?" loading="lazy">
+          <span class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg></span>
+        </button>
+        <figcaption>Episode 1, The Trip (1:44)</figcaption>
+      </figure>
       <ol class="eps">
         <li class="ep now">
-          <span class="n">01 · llama.cpp</span>
-          <h3>The Trip</h3>
-          <p>What happens between pressing Enter and the first word?</p>
-          <span class="st"><a href="#" data-play>Watch now · 1:44</a></span>
+          <span class="n">1</span>
+          <div><h3>The Trip</h3><p>What happens between pressing Enter and the first word?</p><p class="meta">llama.cpp</p></div>
+          <span class="st"><a href="video/llama-cpp-request-trace.mp4" data-play>Watch now</a></span>
         </li>
         <li class="ep">
-          <span class="n">02 · llama.cpp</span>
-          <h3>Warm Start</h3>
-          <p>Why is my second message faster?</p>
+          <span class="n">2</span>
+          <div><h3>Warm Start</h3><p>Why is my second message faster?</p><p class="meta">llama.cpp</p></div>
           <span class="st">Up next</span>
         </li>
-        <li class="ep later">
-          <span class="n">03 · llama.cpp</span>
-          <h3>One Word</h3>
-          <p>How does the model pick the next word?</p>
+        <li class="ep">
+          <span class="n">3</span>
+          <div><h3>One Word</h3><p>How does the model pick the next word?</p><p class="meta">llama.cpp</p></div>
           <span class="st">Coming</span>
         </li>
-        <li class="ep later">
-          <span class="n">04 · vLLM</span>
-          <h3>Many Chats, One GPU</h3>
-          <p>How does one GPU serve many people at once?</p>
+        <li class="ep">
+          <span class="n">4</span>
+          <div><h3>Many Chats, One GPU</h3><p>How does one GPU serve many people at once?</p><p class="meta">vLLM</p></div>
           <span class="st">Coming</span>
         </li>
-        <li class="ep later">
-          <span class="n">05 · both</span>
-          <h3>Two Engines</h3>
-          <p>How do llama.cpp and vLLM differ on the same request?</p>
+        <li class="ep">
+          <span class="n">5</span>
+          <div><h3>Two Engines</h3><p>How do llama.cpp and vLLM differ on the same request?</p><p class="meta">Both engines</p></div>
           <span class="st">Coming</span>
         </li>
       </ol>
@@ -229,74 +327,23 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
   </div>
 </section>
 
-<section class="band" id="tools" aria-labelledby="h-tools">
-  <div class="wrap">
-    <div class="head">
-      <h2 id="h-tools">The tracers</h2>
-      <p>Interactive maps of the real code. Press Trace and the request walks itself, one function at a time, each linked to its source line.</p>
-    </div>
-    <div class="tools">
-      <a class="tool lead" href="llama-cpp.html">
-        <img src="assets/close-llama-cpp.webp" width="960" height="600" alt="Close-up of the llama.cpp tracer on step 13, Pick a slot, with the step card explaining it">
-        <div class="b">
-          <span class="eng">llama.cpp · C++ · 53 steps</span>
-          <h3>llama.cpp tracer</h3>
-          <p>One process, one inference thread. Watch the request get a slot, run through ggml on the GPU and stream back.</p>
-          <span class="go">Open tracer</span>
-        </div>
-      </a>
-      <a class="tool" href="vllm.html">
-        <img src="assets/close-vllm.webp" width="960" height="600" alt="Close-up of the vLLM tracer on step 18, Schedule, next to Admit waiting request" loading="lazy">
-        <div class="b">
-          <span class="eng">vLLM · Python · 59 steps</span>
-          <h3>vLLM tracer</h3>
-          <p>Two processes over ZMQ, a token-budget scheduler and a paged KV cache.</p>
-          <span class="go">Open tracer</span>
-        </div>
-      </a>
-      <a class="tool" href="vllm-module-graph.html">
-        <img src="assets/close-vllm-module-graph.webp" width="960" height="600" alt="Close-up of the vLLM module graph on step 4, ZMQ hand-off to the engine core" loading="lazy">
-        <div class="b">
-          <span class="eng">vLLM · zoomed out · 18 steps</span>
-          <h3>vLLM module map</h3>
-          <p>The same trip drawn across vLLM's 164 modules.</p>
-          <span class="go">Open map</span>
-        </div>
-      </a>
-    </div>
-    <p class="how">Step with <kbd>←</kbd> <kbd>→</kbd>, click any box for details. Best on a laptop or bigger.</p>
-  </div>
-</section>
-
-<section class="sec" id="compare" aria-labelledby="h-cmp">
-  <div class="wrap">
-    <div class="head">
-      <h2 id="h-cmp">Same request, two designs</h2>
-      <p>The short version of what the tracers show.</p>
-    </div>
-    <table class="cmp">
-      <thead><tr><td></td><th scope="col">llama.cpp</th><th scope="col">vLLM</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Shape</th>
-          <td data-k="llama.cpp">One process. HTTP threads hand work to a single inference thread.</td>
-          <td data-k="vLLM">Two processes. An API process and an EngineCore that owns the GPU, talking over ZMQ.</td></tr>
-        <tr><th scope="row">Batching</th>
-          <td data-k="llama.cpp">A fixed number of slots (<code>--parallel</code>), one <code>llama_decode</code> per tick.</td>
-          <td data-k="vLLM">A token budget per step. Prefill and decode share one flat batch.</td></tr>
-        <tr><th scope="row">Reusing a prompt</th>
-          <td data-k="llama.cpp">Picks the slot whose cache shares the longest prefix.</td>
-          <td data-k="vLLM">Reuses any matching 16-token block, even from another request.</td></tr>
-        <tr><th scope="row">Out of memory</th>
-          <td data-k="llama.cpp">Retries with a smaller batch.</td>
-          <td data-k="vLLM">Preempts a running request and recomputes it later.</td></tr>
-      </tbody>
-    </table>
+<section class="wrap" id="method" aria-labelledby="h-method">
+  <div class="sec">
+    <h2 id="h-method">How this was measured</h2>
+    <p class="lede">Both servers run the same model on the same card and get the same requests.</p>
+    <dl class="spec">
+      <div><dt>Hardware</dt><dd>One RTX 4090, 24 GB</dd></div>
+      <div><dt>Model</dt><dd>Llama 3.1 8B Instruct, 16-bit</dd></div>
+      <div><dt>Versions</dt><dd id="method-versions"></dd></div>
+      <div><dt>Method</dt><dd>How the benchmark runs, how to rerun it and where the raw results live: <a href="bench/README.md">bench/README.md</a></dd></div>
+    </dl>
+    <p class="more">More engines will be added, each as a data file, and each gets the same rows.</p>
   </div>
 </section>
 
 <div class="wrap">
   <footer>
-    <p>Each repo was read at a pinned commit (llama.cpp <code>2ca15f5</code>, vLLM <code>1388100</code>) with Claude, and every box links to its source line. Simplified, and probably wrong in places. Corrections welcome as issues.</p>
+    <p>Each repo was read at the pinned commit listed under Method with Claude, and every code step links to its source line. Simplified, and probably wrong in places. Corrections welcome as issues.</p>
     <p>Learning notes, not affiliated with <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a>. Films made with Claude; images HiDream-I1, voice ElevenLabs, motion and score built in code.</p>
   </footer>
 </div>
@@ -309,27 +356,25 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
       <a href="video/llama-cpp-request-trace.mp4">Download the video (MP4, 26 MB)</a>
     </video>
     <div class="player-bar">
-      <span>Episode 1 · The Trip <small>· 1:44 · llama.cpp @2ca15f5</small></span>
-      <span><a href="llama-cpp.html">Open the tracer →</a> &nbsp; <button class="close" type="button" data-close>Close ✕</button></span>
+      <span>Episode 1, The Trip (1:44)</span>
+      <span><a href="llama-cpp.html">Open the llama.cpp tracer</a> &nbsp; <button class="close" type="button" data-close>Close</button></span>
     </div>
   </div>
 </dialog>
 
-<script>
-(() => {
-  const dlg = document.getElementById('player');
-  const vid = dlg.querySelector('video');
-  const open = e => {
-    e.preventDefault();
-    if (!dlg.showModal) { location.href = 'video/llama-cpp-request-trace.mp4'; return; }
-    dlg.showModal();
-    vid.play().catch(() => {});
-  };
-  document.querySelectorAll('[data-play]').forEach(el => el.addEventListener('click', open));
-  dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
-  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
-  dlg.addEventListener('close', () => vid.pause());
-})();
-</script>
+<script src="data/registry.js"></script>
+<script src="data/compare.js"></script>
+<script src="data/engines/llama-cpp.steps.js"></script>
+<script src="data/engines/llama-cpp.js"></script>
+<script src="data/engines/vllm.steps.js"></script>
+<script src="data/engines/vllm.js"></script>
+<script src="data/pairs/llama-cpp--vllm.js"></script>
+<script src="data/bench/llama-cpp.js" onerror="this.remove()"></script>
+<script src="data/bench/vllm.js" onerror="this.remove()"></script>
+<script src="assets/compare/util.js"></script>
+<script src="assets/compare/stage-times.js"></script>
+<script src="assets/compare/chart.js"></script>
+<script src="assets/compare/render.js"></script>
+<script src="assets/compare/page.js"></script>
 </body>
 </html>

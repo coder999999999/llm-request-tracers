@@ -8,6 +8,7 @@ if [ -d "$DIR/.git" ] && [ "$(git -C "$DIR" rev-parse HEAD)" = "$SHA" ]; then ex
 rm -rf "$DIR"; mkdir -p "$DIR"
 git -C "$DIR" init -q
 git -C "$DIR" config core.autocrlf false
+git -C "$DIR" config core.longpaths true   # Windows: the tree has paths over 260 characters
 git -C "$DIR" remote add origin https://github.com/ggml-org/llama.cpp.git
 git -C "$DIR" fetch --depth=1 origin "$SHA"
 git -C "$DIR" checkout -q FETCH_HEAD

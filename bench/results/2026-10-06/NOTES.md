@@ -26,20 +26,21 @@ llama.cpp runs `--kv-unified` with a 32,768-token context shared by all slots; v
 
 | max_tokens | llama.cpp | vLLM |
 |---|---|---|
-| 256 | valid, 402 / 484 / 421 tok/s (repeats 0 to 2), TTFT median 2.9 to 7.4 s, only 7 to 18 requests finished in the window | valid, about 2,150 tok/s, TTFT about 500 ms, 0 preemptions |
+| 256 | valid, 402 / 484 / 421 tok/s (repeats 0 to 2), in-window TTFT medians of 2.9 to 7.4 s are not comparable (see below), only 7 to 18 requests in the window | valid, about 2,150 tok/s, TTFT about 500 ms, 0 preemptions |
 | 512 | invalid: 128 of 128 requests failed with HTTP 500 "Context size has been exceeded", 100 / 125 / 111 KV-retry log lines | valid, about 2,070 tok/s, TTFT about 820 ms, 65 / 72 / 68 preemptions |
 | 1024 | invalid: 128 of 128 failed, same error, 91 / 91 / 105 KV-retry lines | valid, 1,440 to 1,574 tok/s, TTFT 4.7 to 6.7 s, 255 / 278 / 264 preemptions |
 
-This is genuine engine behaviour, not a harness fault and not rerun. With 64 concurrent sequences growing toward 512 or 1,024 generated tokens, the shared 32,768-token budget cannot hold them all; llama.cpp fails the requests once it runs out of room even after retrying, whereas vLLM preempts and recomputes sequences and keeps serving at lower throughput and higher TTFT. At 256 tokens llama.cpp survives but is far slower than its main-config run at the same 64 users (892 tok/s, TTFT 754 ms); the unified-cache configuration and its retries cost a large share of throughput even when nothing fails. The six invalid levels are excluded from the site by `to-site.mjs`.
+This is genuine engine behaviour, not a harness fault and not rerun. With 64 concurrent sequences growing toward 512 or 1,024 generated tokens, the shared 32,768-token budget cannot hold them all; llama.cpp fails the requests once it runs out of room even after retrying, whereas vLLM preempts and recomputes sequences and keeps serving at lower throughput and higher TTFT. At 256 tokens llama.cpp survives but is far slower than its main-config run at the same 64 users (892 tok/s, TTFT 754 ms). The cause is not established. It coincides with the `--kv-unified` configuration, but decode speed is unchanged (inter-token latency about 55 to 60 ms, against 58.8 ms in main at 64 users) and no KV retries occurred at 256 tokens. The slowdown shows up in TTFT, which ranges from about 1.5 to 9.4 s across all records (for example 1,457 to 9,441 ms over 71 OK records in repeat 1). Requests proceed in lockstep cohorts of roughly 11, so the in-window sample is a single cohort per repeat (in repeat 1, 7 records from one burst starting near t = 38 s). The median TTFT for this level should not be compared directly with other levels; the 421 tok/s figure, counted by token arrival, is less affected. The six invalid levels are excluded from the site by `to-site.mjs`.
 
 ## Reuse (prefix caching) check
 
-- llama.cpp: cold TTFT 202.4 ms, warm 28.7 ms . On the 57 warm turns across three repeats, `cache_n` has median 1,492 (range 1,491 to 1,492) against a system prompt of roughly 1,490 tokens and a median prompt of 1,517 tokens. Warm turns therefore hit the cache for the whole shared prefix; only the new turn text is evaluated.
+- llama.cpp: cold TTFT 202.4 ms, warm 28.7 ms. On the 57 warm turns across three repeats, `cache_n` has median 1,492 (range 1,491 to 1,492) against a system prompt of roughly 1,490 tokens and a median prompt of 1,517 tokens. Warm turns therefore hit the cache for the whole shared prefix; only the new turn text is evaluated.
 - vLLM: cold TTFT 380.1 ms, warm 33.2 ms. The vLLM API does not report a per-request cached-token count, so `cache_n` is null; the 11x drop in TTFT is the evidence of prefix-cache hits.
 - Both reuse levels are valid.
 
 ## Anomalies and caveats
 
+- The closed loop with `ignore_eos` and fixed `max_tokens` makes users finish and resubmit in cohorts, so TTFT steps between levels partly reflect cohort prefill.
 - llama.cpp `-np 64` at `-c 32768` gives each slot 512 tokens in the main config; prompts are 170 to 190 tokens plus 256 output tokens, so slots are sufficient and no KV retries occur.
 - llama.cpp kvfull at 256 tokens completes very few requests in the 60 s window (7 to 18), so its medians rest on a small sample.
 - Sustained GPU clocks and temperatures during load were not logged.

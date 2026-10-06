@@ -253,7 +253,7 @@ async function chartChecks(browser, base) {
     ok(m.tiny.length === 0, where, 'svg text under 11px: ' + m.tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));
     ok(m.sw <= m.iw, where, 'horizontal overflow (' + m.sw + ' > ' + m.iw + '): ' + m.wide.join('; '));
     for (const p of problems) fail(where, p);
-    if (width === 1440) await tooltipChecks(page, where);
+    await tooltipChecks(page, where);
     await page.close();
   }
   const where = 'http reversed pair with verdict';
@@ -294,7 +294,7 @@ async function tooltipChecks(page, where) {
   const pt = await page.evaluate(() => { const c = document.querySelector('#q1 figure circle[data-tip]'); c.scrollIntoView({ behavior: 'instant', block: 'center' }); const r = c.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return { x: x, y: y, tip: top && top.getAttribute('data-tip') }; });
   await page.mouse.move(pt.x, pt.y);
   ok(await tip() === pt.tip, where, 'chart point tooltip not shown on hover');
-  ok(await page.evaluate(() => !document.querySelector('#q1 figure circle[data-tip] title') || document.querySelectorAll('#q1 figure circle[data-tip] title').length < document.querySelectorAll('#q1 figure circle[data-tip]').length), where, 'native title should be removed on the hovered point');
+  ok(await page.evaluate((x, y) => { const c = document.elementFromPoint(x, y); return !!c && c.matches('circle[data-tip]') && !c.querySelector('title'); }, pt.x, pt.y), where, 'the hovered circle should have no <title> child');
   await page.mouse.move(2, 2);
 }
 
@@ -312,8 +312,8 @@ async function realFontChecks(browser, base) {
   if (!await canReachFonts()) { console.log('NOTE: Google Fonts is not reachable; skipping the real-font 390px check.'); return; }
   const { page, problems } = await openPage(browser, { width: 390, url: base + '/index.html', realFonts: true });
   await page.evaluate(() => document.fonts.ready);
-  const loaded = await page.evaluate(() => document.fonts.check('700 16px "Archivo Narrow"') && document.fonts.check('400 16px Archivo'));
-  if (!loaded) { console.log('NOTE: web fonts did not load in the browser; skipping the real-font 390px check.'); await page.close(); return; }
+  const loaded = await page.evaluate(() => [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Archivo' && f.status === 'loaded'));
+  if (!loaded) { console.log('NOTE: the Archivo web font did not load (no FontFace with status loaded); skipping the real-font 390px check.'); await page.close(); return; }
   await page.evaluate(() => document.querySelectorAll('#chapters details, #every-stage details').forEach(d => { d.open = true; }));
   const m = await page.evaluate(() => {
     const out = [];

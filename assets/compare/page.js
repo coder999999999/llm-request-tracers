@@ -191,7 +191,8 @@
   // ---- tooltips ---------------------------------------------------------
 
   // Anything with data-tip (chart points, source links) shows its text on hover and
-  // on keyboard focus. The native title is dropped on first use so only one shows.
+  // on keyboard focus. A chart point's native <title> child is dropped on first use so only one
+  // tooltip shows; source links keep their title attribute as the accessible description.
   function wireTips() {
     var tip = document.createElement('div');
     tip.className = 'tip';
@@ -199,12 +200,11 @@
     tip.setAttribute('role', 'tooltip');
     tip.hidden = true;
     document.body.appendChild(tip);
-    var current = null;
+    var current = null, hovered = null;
     function tipOf(t) { return t && t.closest ? t.closest('[data-tip]') : null; }
     function show(el) {
       var text = el.getAttribute('data-tip');
       if (!text) return;
-      el.removeAttribute('title');
       var t = el.querySelector('title');
       if (t) el.removeChild(t);
       current = el;
@@ -217,13 +217,13 @@
       tip.style.top = Math.round(top) + 'px';
     }
     function hide() { current = null; tip.hidden = true; }
-    document.addEventListener('mouseover', function (e) { var el = tipOf(e.target); if (el) show(el); else if (current) hide(); });
+    document.addEventListener('mouseover', function (e) { var el = tipOf(e.target); hovered = el; if (el) show(el); else if (current) hide(); });
     document.addEventListener('focusin', function (e) {
       var el = tipOf(e.target), vis = false;
       if (el) { try { vis = el.matches(':focus-visible'); } catch (x) { vis = true; } }
-      if (el && vis) show(el); else hide();
+      if (el && vis) show(el); else if (!(el && el === hovered)) hide();
     });
-    document.addEventListener('focusout', hide);
+    document.addEventListener('focusout', function () { if (!(hovered && hovered === current)) hide(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
     window.addEventListener('scroll', function () { if (current && !tip.hidden) show(current); }, { passive: true });
   }

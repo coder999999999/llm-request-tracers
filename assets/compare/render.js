@@ -76,12 +76,20 @@
 
   // ---- code paths -------------------------------------------------------
 
-  // A step's fn is code only when it looks like an identifier or a call. Pipelines
-  // and comments (spaces, arrows, pipes, //) are prose, so they render as plain text.
+  // A step's fn is code when it is an identifier, a call (with or without arguments, with
+  // an optional decorator), or a short statement (for/while/if header, yield). Pipelines
+  // and comments (arrows, middle dots, pipes, //) are prose and render as plain text.
   var CODE_LIKE = /^[\w:.<>~\[\]]+(\(\))?$/;
+  var CALL_LIKE = /^@?[\w:.<>~\[\]]+\(.*\)$/;
+  var STMT_LIKE = /^(?:(?:for|while|if)\s*\(.*\)(?:\s*{)?|yield\s+\S.*)$/;
+  var PIPELINE = /\u2192|\u00b7|\||\/\//;
+  function isCode(f) {
+    if (CODE_LIKE.test(f)) return true;
+    return !PIPELINE.test(f) && (CALL_LIKE.test(f) || STMT_LIKE.test(f));
+  }
   function fnHtml(fn) {
     var f = String(fn === undefined || fn === null ? '' : fn);
-    return CODE_LIKE.test(f) ? '<code>' + esc(f) + '</code>' : '<span class="fn">' + txt(f) + '</span>';
+    return isCode(f) ? '<code>' + esc(f) + '</code>' : '<span class="fn">' + txt(f) + '</span>';
   }
 
   function stepHtml(engine, s) {

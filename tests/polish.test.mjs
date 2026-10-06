@@ -20,7 +20,9 @@ const engineWith = (fn) => ({ ...RT.engines['llama-cpp'], steps: { arrive: [step
 const html = (fn) => RTR.codeList(engineWith(fn), 'arrive');
 
 test('identifier and call fn strings render inside <code>', () => {
-  for (const fn of ['get_available_slot', 'server_queue::start_loop', 'Server.ChatHandler', 'update_slots()', 'std::vector<int>', 'a.b[0]']) {
+  for (const fn of ['get_available_slot', 'server_queue::start_loop', 'Server.ChatHandler', 'update_slots()', 'std::vector<int>', 'a.b[0]',
+    'batch.add(token, pos, seq_id, logits)', 'ctx_http.post("/v1/chat/completions", …)', 'for (il = 0; il < n_layer; ++il)',
+    '@router.post("/v1/chat/completions")', 'UniProcExecutor.execute_model(non_block=True)', 'yield f"data: {data}\\n\\n"']) {
     assert.match(html(fn), /<code>[^<]+<\/code>/, fn);
     assert.doesNotMatch(html(fn), /class="fn"/, fn);
   }
@@ -28,7 +30,7 @@ test('identifier and call fn strings render inside <code>', () => {
 
 test('pipelines and comments render as plain text, not <code>', () => {
   for (const fn of ['rd.post_tasks → server_queue::post', 'NoSignalServer · asyncio event loop', 'safe_apply_chat_template (thread pool)',
-    'for (il = 0; il < n_layer; ++il)', 'a | b', 'parse then send', 'x // comment']) {
+    'engine_client.generate(…) → stream generator', 'a | b', 'parse then send', 'x // comment']) {
     const out = html(fn);
     assert.doesNotMatch(out, /<code>/, fn);
     assert.match(out, /<span class="fn">/, fn);

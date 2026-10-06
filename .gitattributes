@@ -1,3 +1,6 @@
 bench/*.sh text eol=lf
 bench/*.yml text eol=lf
 bench/*.Dockerfile text eol=lf
+bench/prompts/* text eol=lf
+bench/make_prompts.py text eol=lf
+bench/tests/*.py text eol=lf

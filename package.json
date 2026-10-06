@@ -1,0 +1,13 @@
+{
+  "name": "llm-request-tracers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\"",
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "check": "node tools/check-sources.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}

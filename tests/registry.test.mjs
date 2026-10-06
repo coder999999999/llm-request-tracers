@@ -98,9 +98,10 @@ test('shipped engine data loads with no errors and the expected step counts', ()
     Object.entries(RT.engines[id].steps).map(([stage, list]) => [stage, list.length]));
   assert.deepEqual(counts('llama-cpp'), { arrive: 8, wait: 6, think: 21, speak: 5 });
   assert.deepEqual(counts('vllm'), { arrive: 9, wait: 9, think: 18, speak: 8 });
+  const expectedHops = { 'llama-cpp': 2, vllm: 3 };
   for (const id of ['llama-cpp', 'vllm']) {
     const hops = Object.values(RT.engines[id].steps).flat().filter(s => s.hop);
-    assert.equal(hops.length, 2, id);
+    assert.equal(hops.length, expectedHops[id], id);
     for (const [key, f] of Object.entries(RT.engines[id].features)) {
       assert.ok(f.value.length <= 70, `${id}.${key} value too long`);
       assert.ok(f.file && f.line && f.check, `${id}.${key} lacks a source reference`);

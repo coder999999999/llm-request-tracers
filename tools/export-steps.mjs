@@ -31,7 +31,8 @@ const ENGINES = {
     stages: { arrive: [2, 10], wait: [11, 19], think: [20, 37], speak: [38, 45] },
     key: [2, 4, 6, 7, 11, 14, 16, 18, 19, 20, 21, 28, 33, 36, 40, 42, 45],
     hops: {
-      15: ['process', 'Crosses into the EngineCore process over ZMQ'],
+      15: ['process', 'Crosses into the EngineCore process over ZMQ, onto its input socket thread'],
+      40: ['thread', 'Hands off to the output socket thread'],
       41: ['process', 'Back to the API process over ZMQ'],
     },
   },

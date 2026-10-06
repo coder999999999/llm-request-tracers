@@ -31,8 +31,8 @@ RT.registerEngine({
       file: 'tools/server/server-context.cpp', line: 3014, check: 'decode(n_batch'
     },
     prefix_reuse: {
-      value: 'Reuses the slot with the longest shared prefix',
-      file: 'tools/server/server-context.cpp', line: 1651, check: 'get_common_prefix'
+      value: 'Idle slot with best prefix match over a threshold, else least recent',
+      file: 'tools/server/server-context.cpp', line: 1657, check: 'slot_prompt_similarity'
     },
     kv_full: {
       value: 'Out of KV room: retries with a smaller batch',

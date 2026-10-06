@@ -16,7 +16,7 @@ RT.addSteps("vllm", {
     { n: 12, title: "Input processor", fn: "InputProcessor.process_inputs → EngineCoreRequest", file: "vllm/v1/engine/input_processor.py", line: 339, check: "process_inputs" },
     { n: 13, title: "Register output state", fn: "OutputProcessor.add_request", file: "vllm/v1/engine/async_llm.py", line: 547, check: "add_request" },
     { n: 14, title: "Send to engine core", fn: "AsyncMPClient.add_request_async", file: "vllm/v1/engine/core_client.py", line: 1276, check: "add_request_async", key: true },
-    { n: 15, title: "Input socket thread", fn: "process_input_sockets → preprocess_add_request", file: "vllm/v1/engine/core.py", line: 1757, check: "process_input_sockets", hop: "process", hopText: "Crosses into the EngineCore process over ZMQ" },
+    { n: 15, title: "Input socket thread", fn: "process_input_sockets → preprocess_add_request", file: "vllm/v1/engine/core.py", line: 1757, check: "process_input_sockets", hop: "process", hopText: "Crosses into the EngineCore process over ZMQ, onto its input socket thread" },
     { n: 16, title: "Add to scheduler", fn: "EngineCore.add_request → Scheduler.add_request", file: "vllm/v1/engine/core.py", line: 526, check: "add_request", key: true },
     { n: 17, title: "Engine step", fn: "run_busy_loop → step_with_batch_queue", file: "vllm/v1/engine/core.py", line: 670, check: "step_with_batch_queue" },
     { n: 18, title: "Schedule", fn: "Scheduler.schedule", file: "vllm/v1/core/sched/scheduler.py", line: 571, check: "schedule", key: true },
@@ -45,7 +45,7 @@ RT.addSteps("vllm", {
   speak: [
     { n: 38, title: "Wait for the batch", fn: "batch_queue.pop() → future.result()", file: "vllm/v1/engine/core.py", line: 740, check: "result" },
     { n: 39, title: "Update requests", fn: "Scheduler.update_from_output → check_stop", file: "vllm/v1/core/sched/scheduler.py", line: 1978, check: "update_from_output" },
-    { n: 40, title: "Output socket thread", fn: "EngineCoreOutput → output_queue → ZMQ", file: "vllm/v1/engine/core.py", line: 1859, check: "process_output_sockets", key: true },
+    { n: 40, title: "Output socket thread", fn: "EngineCoreOutput → output_queue → ZMQ", file: "vllm/v1/engine/core.py", line: 1859, check: "process_output_sockets", key: true, hop: "thread", hopText: "Hands off to the output socket thread" },
     { n: 41, title: "Output handler", fn: "process_outputs_socket → output_handler", file: "vllm/v1/engine/async_llm.py", line: 820, check: "output_handler", hop: "process", hopText: "Back to the API process over ZMQ" },
     { n: 42, title: "Detokenize", fn: "OutputProcessor.process_outputs → detokenizer.update", file: "vllm/v1/engine/output_processor.py", line: 744, check: "detokenizer.update", key: true },
     { n: 43, title: "Deliver to the request", fn: "RequestOutputCollector.put → generate() yields", file: "vllm/v1/engine/output_processor.py", line: 770, check: "queue.put" },

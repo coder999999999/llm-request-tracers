@@ -23,7 +23,7 @@ RT.registerPair({
     }
   },
   answers: {
-    q2: 'Both skip work they have already done, in different ways. llama.cpp picks the slot whose cache shares the longest prefix with the new prompt. vLLM reuses whole cached prefix blocks, and those blocks can come from other requests.',
-    q3: 'llama.cpp stays in one process and crosses a thread boundary twice: the HTTP thread hands the request to the inference thread, and results come back the same way. vLLM crosses a process boundary twice, with ZMQ carrying the request into the EngineCore and the outputs back to the API process. llama.cpp detokenizes on the inference thread, while vLLM does it in the API process.'
+    q2: 'Both skip work they have already done, in different ways. llama.cpp gives the request the idle slot whose cache shares the most of the prompt, as long as the match clears a similarity threshold, and otherwise takes the least recently used idle slot. vLLM reuses whole cached prefix blocks, and those blocks can come from other requests.',
+    q3: 'llama.cpp stays in one process and crosses a thread boundary twice: the HTTP thread hands the request to the inference thread, and results come back the same way. vLLM crosses a process boundary twice, with ZMQ carrying the request into the EngineCore, where an input socket thread receives it, and the outputs back to the API process after an output socket thread sends them. It also renders the chat template on a thread pool. llama.cpp detokenizes on the inference thread, while vLLM does it in the API process.'
   }
 });

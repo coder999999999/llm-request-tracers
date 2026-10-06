@@ -1,0 +1,3256 @@
+{
+  "tolerance": 1,
+  "ok": true,
+  "rows": [
+    {
+      "prompt_id": 4,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 5,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 6,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 7,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 8,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 9,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 10,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 11,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 12,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 13,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 14,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 15,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 16,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 17,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 18,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 19,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 20,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 21,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 22,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 23,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 24,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 25,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 26,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 27,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 28,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 29,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 30,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 31,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 32,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 33,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 34,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 35,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 36,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 37,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 38,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 39,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 40,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 41,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 42,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 43,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 44,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 45,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 46,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 47,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 48,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 49,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 50,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 51,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 52,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 53,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 54,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 55,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 56,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 57,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 58,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 59,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 60,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 61,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 62,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 63,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 64,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 65,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 66,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 67,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 68,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 69,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 70,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 71,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 72,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 73,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 74,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 75,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 76,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 77,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 78,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 79,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 80,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 81,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 82,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 83,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 84,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 85,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 86,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 87,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 88,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 89,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 90,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 91,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 92,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 93,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 94,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 95,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 96,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 97,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 98,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 99,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 100,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 101,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 102,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 103,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 104,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 105,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 106,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 107,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 108,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 109,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 110,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 111,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 112,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 113,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 114,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 115,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 116,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 117,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 118,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 120,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 121,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 122,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 123,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 124,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 125,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 126,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 127,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 128,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 129,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 130,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 131,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 132,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 133,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 134,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 135,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 136,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 137,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 138,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 139,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 140,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 141,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 142,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 143,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 144,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 145,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 146,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 147,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 148,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 149,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 150,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 151,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 152,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 153,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 155,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 156,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 157,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 158,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 159,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 160,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 161,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 162,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 163,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 164,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 165,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 166,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 167,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 168,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 169,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 170,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 171,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 172,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 173,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 174,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 175,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 176,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 177,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 178,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 179,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 180,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 181,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 182,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 183,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 184,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 185,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 186,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 187,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 188,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 189,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 190,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 191,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 192,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 193,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 194,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 195,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 196,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 197,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 198,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 199,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 200,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 201,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 202,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 203,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 204,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 205,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 206,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 207,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 208,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 209,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 210,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 211,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 212,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 213,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 214,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 215,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 216,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 218,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 219,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 220,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 221,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 222,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 223,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 224,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 225,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 226,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 227,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 232,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 233,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 234,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 235,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 239,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 240,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 241,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 242,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 246,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 247,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 248,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 249,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 253,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 254,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 255,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 256,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 260,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 261,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 262,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 263,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 267,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 268,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 269,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 270,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 274,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 275,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 276,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 277,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 281,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 282,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 283,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 284,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 288,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 289,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 290,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 291,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 295,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 296,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 297,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 298,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 302,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 303,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 304,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 305,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 309,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 310,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 311,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 316,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 317,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 318,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 323,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 324,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 325,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 330,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 331,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 332,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 337,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 338,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 339,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 344,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 345,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 346,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 351,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 352,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 353,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 358,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 359,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 360,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 365,
+      "llama": [
+        177
+      ],
+      "vllm": [
+        177
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 366,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 367,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 372,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 373,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 374,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 379,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 380,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 381,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 386,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 387,
+      "llama": [
+        173
+      ],
+      "vllm": [
+        173
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 388,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 393,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 394,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 395,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 400,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 401,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 402,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 407,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 408,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 409,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 414,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 415,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 416,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 421,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 422,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 423,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 428,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 429,
+      "llama": [
+        176
+      ],
+      "vllm": [
+        176
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 430,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 435,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 436,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 437,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 442,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 443,
+      "llama": [
+        175
+      ],
+      "vllm": [
+        175
+      ],
+      "max_abs_diff": 0
+    },
+    {
+      "prompt_id": 444,
+      "llama": [
+        174
+      ],
+      "vllm": [
+        174
+      ],
+      "max_abs_diff": 0
+    }
+  ]
+}

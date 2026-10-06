@@ -1,0 +1,30 @@
+{
+  "n_ok": 100,
+  "n_err": 0,
+  "n_short": 0,
+  "err_rate": 0,
+  "valid": true,
+  "ttft_ms": {
+    "median": 18,
+    "p90": 36
+  },
+  "itl_ms": {
+    "median": 8,
+    "p90": 16
+  },
+  "e2e_ms": {
+    "median": 640,
+    "p90": 1280
+  },
+  "prompt_ms": null,
+  "tokens_per_chunk": 1,
+  "tok_s": 440,
+  "config": "main",
+  "engine": "vllm",
+  "users": 2,
+  "repeat": 1,
+  "max_tokens": 256,
+  "server": {
+    "error": "RuntimeError: scrape failed"
+  }
+}

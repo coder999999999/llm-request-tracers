@@ -1,0 +1,32 @@
+{
+  "n_ok": 100,
+  "n_err": 0,
+  "n_short": 0,
+  "err_rate": 0,
+  "valid": true,
+  "ttft_ms": {
+    "median": 320,
+    "p90": 640
+  },
+  "itl_ms": {
+    "median": 15,
+    "p90": 30
+  },
+  "e2e_ms": {
+    "median": 4000,
+    "p90": 8000
+  },
+  "prompt_ms": null,
+  "tokens_per_chunk": 1,
+  "tok_s": 2200,
+  "config": "kvfull",
+  "engine": "vllm",
+  "users": 64,
+  "repeat": 1,
+  "max_tokens": 1024,
+  "server": {
+    "queue_ms": 1,
+    "prefill_ms": 2,
+    "preemptions": 14
+  }
+}

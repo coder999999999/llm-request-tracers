@@ -8,7 +8,7 @@
       { id: 'speak',  number: 4, name: 'Speak',  subtitle: 'Text back out as server-sent events' }
     ],
     questions: [
-      { id: 'q1', text: 'Why does vLLM pull ahead once many people are chatting?', stages: ['wait'], chart: 'throughput' },
+      { id: 'q1', text: 'How far does vLLM pull ahead as more people chat?', stages: ['wait'], chart: 'throughput' },
       { id: 'q2', text: 'Who reuses your prompt better?', stages: ['think'], chart: 'reuse' },
       { id: 'q3', text: 'Where does your request cross a thread or process boundary?', stages: ['arrive', 'speak'], chart: 'boundaries' },
       { id: 'q4', text: 'What happens when the KV cache runs out of room?', stages: ['think'], chart: 'kvFull' }

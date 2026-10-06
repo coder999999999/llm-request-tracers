@@ -122,8 +122,8 @@
   - `parse_sse(lines: Iterable[str]) -> Iterator[dict]`
   - `async one_request(client, base_url, model, messages, max_tokens, t0) -> Record`
   - `Record` is a dataclass with: `user:int`, `start_s`, `ttft_ms|None`, `itl_ms:list[float]`, `e2e_ms|None`, `out_tokens|None`, `tokens_source:'usage'|'timings'|'chunks'`, `prompt_ms|None` (llama.cpp `timings.prompt_ms`), `cache_n|None`, `ok:bool`, `error|None`
-  - `async run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60, max_tokens=256) -> list[Record]`: closed loop; returns only records inside the window
-  - `summarize(records, measure_s) -> dict` with keys `n_ok`, `n_err`, `err_rate`, `valid`, `ttft_ms`, `itl_ms`, `e2e_ms`, `prompt_ms` (each `{median,p90}` or None), and `tok_s`
+  - `async run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60, max_tokens=256) -> LevelResult`: closed loop. `LevelResult` is a dataclass `{records: list[Record], warmup_s, measure_s, users}`. `records` holds the latency records (`in_window and not partial`) plus warm-up straddlers and window-end cancelled partials (`in_window=False`), which exist only for throughput. Do not read latency from `records` directly; use `summarize`
+  - `summarize(level: LevelResult) -> dict` with keys `n_ok`, `n_err`, `n_short` (outputs with `out_tokens != max_tokens`, counted in `n_err`), `err_rate`, `valid`, `ttft_ms`, `itl_ms`, `e2e_ms`, `prompt_ms` (each `{median,p90}` or None), `tokens_per_chunk` (None if no request completed OK), and `tok_s` (None if no request completed OK). `tok_s` counts content chunks arriving inside the window (token arrival), not whole requests
 
 - [ ] **Step 1: Write the failing tests.** They run against a fake ASGI SSE server (`httpx.MockTransport`).
 

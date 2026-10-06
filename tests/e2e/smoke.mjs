@@ -84,7 +84,7 @@ const fail = (where, msg) => failures.push(`${where}: ${msg}`);
 let checks = 0;
 function ok(cond, where, msg) { checks++; if (!cond) fail(where, msg); }
 
-async function openPage(browser, { width, url, fake, bench }) {
+async function openPage(browser, { width, url, fake, bench, realFonts }) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
   const problems = [];
@@ -99,7 +99,7 @@ async function openPage(browser, { width, url, fake, bench }) {
   await page.setRequestInterception(true);
   page.on('request', req => {
     const u = req.url();
-    if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(u)) {
+    if (!realFonts && /^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(u)) {
       // Keep the run offline-safe and deterministic: system fonts only.
       req.respond({ status: 200, contentType: 'text/css', body: '' });
     } else if (bench && /\/data\/bench\/(llama-cpp|vllm)\.js(\?|$)/.test(u)) {
@@ -253,6 +253,7 @@ async function chartChecks(browser, base) {
     ok(m.tiny.length === 0, where, 'svg text under 11px: ' + m.tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));
     ok(m.sw <= m.iw, where, 'horizontal overflow (' + m.sw + ' > ' + m.iw + '): ' + m.wide.join('; '));
     for (const p of problems) fail(where, p);
+    await tooltipChecks(page, where);
     await page.close();
   }
   const where = 'http reversed pair with verdict';
@@ -263,6 +264,74 @@ async function chartChecks(browser, base) {
     return out;
   };
   ok(await grab('?a=llama-cpp&b=vllm') === await grab('?a=vllm&b=llama-cpp'), where, 'verdict or annotations flip when the URL pair is reversed');
+}
+
+// Tooltips: a chart point and a source link each show their detail on keyboard
+// focus (a keyboard Tab, so :focus-visible applies) and on mouse hover, and the
+// native title is dropped so only one tooltip shows.
+async function tooltipChecks(page, where) {
+  const tip = () => page.evaluate(() => { const t = document.getElementById('tip'); return t && !t.hidden && t.getClientRects().length ? t.textContent : ''; });
+  await page.evaluate(() => { document.getElementById('q1').scrollIntoView({ behavior: 'instant' }); });
+  // Focus the control just before the first chart point, then Tab onto the point.
+  await page.evaluate(() => { const c = document.querySelector('#q1 figure circle[data-tip]'); c.focus(); c.blur(); });
+  await page.keyboard.press('Tab');
+  const onPoint = await page.evaluate(() => document.activeElement && document.activeElement.matches('circle[data-tip]') ? document.activeElement.getAttribute('data-tip') : null);
+  ok(onPoint !== null, where, 'Tab did not land on a chart point');
+  ok(onPoint !== null && await tip() === onPoint, where, 'chart point tooltip not shown on keyboard focus: "' + await tip() + '"');
+  await page.keyboard.press('Escape');
+  ok(await tip() === '', where, 'Escape should hide the tooltip');
+  await page.evaluate(() => document.activeElement.blur());
+  ok(await tip() === '', where, 'tooltip should hide when focus leaves');
+
+  // A source link: focus it with the keyboard.
+  await page.evaluate(() => { const a = document.querySelector('#every-stage .src'); a.scrollIntoView({ behavior: 'instant', block: 'center' }); });
+  const src = await page.evaluate(() => { const d = document.querySelector('#every-stage details'); d.open = true; const a = d.querySelector('.src'); a.scrollIntoView({ behavior: 'instant', block: 'center' }); const prev = [...document.querySelectorAll('a[href], summary')]; const i = prev.indexOf(a); prev[i - 1].focus(); return a.getAttribute('data-tip'); });
+  await page.keyboard.press('Tab');
+  ok(await tip() === src && src, where, 'source link tooltip not shown on keyboard focus: "' + await tip() + '" vs "' + src + '"');
+  await page.evaluate(() => document.activeElement.blur());
+
+  // Mouse hover on a chart point shows the same text, and the title is gone.
+  const pt = await page.evaluate(() => { const c = document.querySelector('#q1 figure circle[data-tip]'); c.scrollIntoView({ behavior: 'instant', block: 'center' }); const r = c.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return { x: x, y: y, tip: top && top.getAttribute('data-tip') }; });
+  await page.mouse.move(pt.x, pt.y);
+  ok(await tip() === pt.tip, where, 'chart point tooltip not shown on hover');
+  ok(await page.evaluate((x, y) => { const c = document.elementFromPoint(x, y); return !!c && c.matches('circle[data-tip]') && !c.querySelector('title'); }, pt.x, pt.y), where, 'the hovered circle should have no <title> child');
+  await page.mouse.move(2, 2);
+}
+
+// Fonts: the other runs block Google Fonts. This one lets them load at 390px, when
+// the network can reach them, and checks that real glyph widths cause no overflow.
+async function canReachFonts() {
+  try {
+    const res = await fetch('https://fonts.googleapis.com/css2?family=Archivo:wght@400', { signal: AbortSignal.timeout(5000) });
+    return res.ok;
+  } catch { return false; }
+}
+
+async function realFontChecks(browser, base) {
+  const where = 'http 390 real fonts';
+  if (!await canReachFonts()) { console.log('NOTE: Google Fonts is not reachable; skipping the real-font 390px check.'); return; }
+  const { page, problems } = await openPage(browser, { width: 390, url: base + '/index.html', realFonts: true });
+  await page.evaluate(() => document.fonts.ready);
+  const loaded = await page.evaluate(() => [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Archivo' && f.status === 'loaded'));
+  if (!loaded) { console.log('NOTE: the Archivo web font did not load (no FontFace with status loaded); skipping the real-font 390px check.'); await page.close(); return; }
+  await page.evaluate(() => document.querySelectorAll('#chapters details, #every-stage details').forEach(d => { d.open = true; }));
+  const m = await page.evaluate(() => {
+    const out = [];
+    const roots = [...document.querySelectorAll('.chapter, #every-stage, #method')];
+    roots.forEach(root => root.querySelectorAll('*').forEach(el => {
+      if (el.closest('svg') && el.tagName.toLowerCase() !== 'svg') return;
+      if (el.closest('.sr-only') || !el.getClientRects().length) return;
+      const parent = el.parentElement;
+      if (!parent) return;
+      const r = el.getBoundingClientRect(), p = parent.getBoundingClientRect();
+      if (r.right > p.right + 1 || r.left < p.left - 1) out.push(el.tagName.toLowerCase() + '.' + (el.getAttribute('class') || '') + ' in ' + parent.tagName.toLowerCase() + '.' + (parent.getAttribute('class') || '') + ' (' + Math.round(r.right) + ' > ' + Math.round(p.right) + ')');
+    }));
+    return { sw: document.documentElement.scrollWidth, out: out.slice(0, 6), n: out.length };
+  });
+  ok(m.sw <= 390, where, 'horizontal overflow with real fonts: scrollWidth ' + m.sw);
+  ok(m.n === 0, where, m.n + ' element(s) overflow their container: ' + m.out.join('; '));
+  for (const p of problems) fail(where, p);
+  await page.close();
 }
 
 // The URL picks the pair; the pair file fixes the order, so naming it the other way
@@ -343,6 +412,7 @@ try {
   await reversedPairChecks(browser, base);
   await chartChecks(browser, base);
   await resizeChecks(browser, base);
+  await realFontChecks(browser, base);
 } catch (e) {
   fail('run', e && e.stack || String(e));
 } finally {

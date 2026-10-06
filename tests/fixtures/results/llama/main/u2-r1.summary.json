@@ -1,0 +1,31 @@
+{
+  "n_ok": 100,
+  "n_err": 5,
+  "n_short": 0,
+  "err_rate": 0.05,
+  "valid": false,
+  "ttft_ms": {
+    "median": 50,
+    "p90": 100
+  },
+  "itl_ms": {
+    "median": 22,
+    "p90": 44
+  },
+  "e2e_ms": {
+    "median": 2100,
+    "p90": 4200
+  },
+  "prompt_ms": null,
+  "tokens_per_chunk": 1,
+  "tok_s": 160,
+  "config": "main",
+  "engine": "llama",
+  "users": 2,
+  "repeat": 1,
+  "max_tokens": 256,
+  "server": {
+    "prompt_ms_median": 27,
+    "kv_retries": 0
+  }
+}

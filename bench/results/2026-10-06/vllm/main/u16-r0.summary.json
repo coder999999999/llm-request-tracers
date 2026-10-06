@@ -1,0 +1,34 @@
+{
+  "n_ok": 144,
+  "n_err": 0,
+  "n_short": 0,
+  "err_rate": 0.0,
+  "valid": true,
+  "ttft_ms": {
+    "median": 246.90458499981105,
+    "p90": 257.696365999891
+  },
+  "itl_ms": {
+    "median": 20.955224500085023,
+    "p90": 22.444690000156697
+  },
+  "e2e_ms": {
+    "median": 5667.696402000047,
+    "p90": 5699.791257000015
+  },
+  "prompt_ms": null,
+  "tokens_per_chunk": 1.0,
+  "tok_s": 728.0,
+  "config": "main",
+  "engine": "vllm",
+  "users": 16,
+  "repeat": 0,
+  "max_tokens": 256,
+  "server": {
+    "queue_ms": 0.016448262491053356,
+    "prefill_ms": 214.08386726879485,
+    "decode_ms": 5391.494117825002,
+    "ttft_ms": 230.1713153719902,
+    "preemptions": 0.0
+  }
+}

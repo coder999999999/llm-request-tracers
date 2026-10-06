@@ -57,3 +57,7 @@ recordings/
 raw/
 *.mov
 *.mkv
+
+# Benchmark model files (kept in the rt-models Docker volume; ignored here as a safeguard)
+bench/models/
+bench/.src/

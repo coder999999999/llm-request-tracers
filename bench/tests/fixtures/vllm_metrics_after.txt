@@ -1,0 +1,14 @@
+vllm:num_preemptions_total{engine="0",model_name="llama-3.1-8b"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.1",model_name="llama-3.1-8b"} 4.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="+Inf",model_name="llama-3.1-8b"} 5.0
+vllm:time_to_first_token_seconds_count{engine="0",model_name="llama-3.1-8b"} 5.0
+vllm:time_to_first_token_seconds_sum{engine="0",model_name="llama-3.1-8b"} 0.33287549018859863
+vllm:request_queue_time_seconds_bucket{engine="0",le="+Inf",model_name="llama-3.1-8b"} 5.0
+vllm:request_queue_time_seconds_count{engine="0",model_name="llama-3.1-8b"} 5.0
+vllm:request_queue_time_seconds_sum{engine="0",model_name="llama-3.1-8b"} 8.515899980920949e-05
+vllm:request_prefill_time_seconds_bucket{engine="0",le="+Inf",model_name="llama-3.1-8b"} 5.0
+vllm:request_prefill_time_seconds_count{engine="0",model_name="llama-3.1-8b"} 5.0
+vllm:request_prefill_time_seconds_sum{engine="0",model_name="llama-3.1-8b"} 0.322985029000165
+vllm:request_decode_time_seconds_bucket{engine="0",le="+Inf",model_name="llama-3.1-8b"} 5.0
+vllm:request_decode_time_seconds_count{engine="0",model_name="llama-3.1-8b"} 5.0
+vllm:request_decode_time_seconds_sum{engine="0",model_name="llama-3.1-8b"} 2.9297514529998807

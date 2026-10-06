@@ -52,7 +52,7 @@
       (extra ? ' <em>' + esc(extra) + '</em>' : '') + '</h4>';
   }
   function srcLink(engine, file, line) {
-    return '<a class="src" href="' + esc(RTU.srcURL(engine, file, line)) + '" title="' + esc(file + ':' + line) + '">' +
+    return '<a class="src" href="' + esc(RTU.srcURL(engine, file, line)) + '" title="' + esc(file + ':' + line) + '" data-tip="' + esc(file + ':' + line) + '">' +
       esc(RTU.shortPath(file) + ':' + line) + '</a>';
   }
   function figure(title, sub, inner) {
@@ -76,9 +76,25 @@
 
   // ---- code paths -------------------------------------------------------
 
+  // A step's fn is code when it is an identifier, a call (with or without arguments, with
+  // an optional decorator), or a short statement (for/while/if header, yield). Pipelines
+  // and comments (arrows, middle dots, pipes, //) are prose and render as plain text.
+  var CODE_LIKE = /^[\w:.<>~\[\]]+(\(\))?$/;
+  var CALL_LIKE = /^@?[\w:.<>~\[\]]+\(.*\)$/;
+  var STMT_LIKE = /^(?:(?:for|while|if)\s*\(.*\)(?:\s*{)?|yield\s+\S.*)$/;
+  var PIPELINE = /\u2192|\u00b7|\||\/\//;
+  function isCode(f) {
+    if (CODE_LIKE.test(f)) return true;
+    return !PIPELINE.test(f) && (CALL_LIKE.test(f) || STMT_LIKE.test(f));
+  }
+  function fnHtml(fn) {
+    var f = String(fn === undefined || fn === null ? '' : fn);
+    return isCode(f) ? '<code>' + esc(f) + '</code>' : '<span class="fn">' + txt(f) + '</span>';
+  }
+
   function stepHtml(engine, s) {
     return '<div class="step"><b>' + txt(s.title) + '</b>' + srcLink(engine, s.file, s.line) +
-      '<code>' + esc(s.fn) + '</code></div>';
+      fnHtml(s.fn) + '</div>';
   }
 
   // Lists steps in order. With onlyKey set, hidden steps are skipped, but a hop

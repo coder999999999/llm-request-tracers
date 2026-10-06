@@ -111,7 +111,8 @@ test('codeList links each step to the pinned commit and shortens the path', () =
   const html = RTR.codeList(vllm, 'wait');
   assert.match(html, /href="https:\/\/github\.com\/vllm-project\/vllm\/blob\/138810056093301f4881050fcf2b1786939da387\/vllm\/v1\/engine\/core\.py#L526"/);
   assert.match(html, />core\.py:526</);
-  assert.match(html, /<code>EngineCore\.add_request/);
+  assert.match(html, /<code>Scheduler\.schedule<\/code>/);
+  assert.match(html, /<span class="fn">EngineCore\.add_request to Scheduler\.add_request<\/span>/);
 });
 
 test('codeList escapes data text', () => {

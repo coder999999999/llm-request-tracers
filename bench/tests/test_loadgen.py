@@ -199,3 +199,23 @@ def test_run_level_returns_partial_and_straddlers_for_throughput():
 def test_no_ok_record_gives_none_throughput():
     s = summarize(lvl([mk(False, chunk_times=[1.1])], 1.0, 1.0))
     assert s["tok_s"] is None and s["tokens_per_chunk"] is None
+
+
+def test_on_window_start_fires_once_at_warmup_end_without_delaying_workers():
+    h = handler_for([chunk("a")], [0.001])
+    fired = []
+
+    async def cb():
+        fired.append(time.perf_counter())
+        await asyncio.sleep(0.3)  # slow callback must not stall the load
+
+    async def go():
+        t0 = time.perf_counter()
+        res = await run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
+                              warmup_s=0.3, measure_s=0.5, max_tokens=1,
+                              transport=httpx.MockTransport(h), on_window_start=cb)
+        return t0, res
+    t0, res = run(go())
+    assert len(fired) == 1
+    assert 0.28 <= fired[0] - t0 <= 0.45
+    assert any(r.ok and r.start_s > 0.35 for r in res.records)  # workers kept going meanwhile

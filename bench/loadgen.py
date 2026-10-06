@@ -148,7 +148,8 @@ def _messages(p):
 
 
 async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
-                    max_tokens=256, transport=None) -> "LevelResult":
+                    max_tokens=256, transport=None,
+                    on_window_start=None) -> "LevelResult":
     """Closed loop with `users` workers.
 
     Latency/error records: requests that started after warm-up and finished before the
@@ -156,7 +157,9 @@ async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
     straddle warm-up end (`in_window=False`) and requests cancelled at window end
     (`partial=True`), when they streamed content chunks inside the window.
     Pass the same `warmup_s` to `summarize`. `prompts` items are message lists or
-    dicts {"id", "messages"}."""
+    dicts {"id", "messages"}.
+    `on_window_start`, if given, is awaited once exactly when warm-up ends, in its own task
+    so it never delays workers; its exception (if any) is raised after the level finishes."""
     t0 = time.perf_counter()
     end_s = warmup_s + measure_s
     records, partials = [], []
@@ -185,10 +188,18 @@ async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
         kw["transport"] = transport
     async with httpx.AsyncClient(**kw) as client:
         tasks = [asyncio.create_task(worker(client, u)) for u in range(users)]
+        cb_task = None
+        if on_window_start is not None:
+            async def fire():
+                await asyncio.sleep(max(0.0, warmup_s - (time.perf_counter() - t0)))
+                await on_window_start()
+            cb_task = asyncio.create_task(fire())
         await asyncio.sleep(max(0.0, end_s - (time.perf_counter() - t0)))
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if cb_task is not None:
+            await cb_task
     for rec in partials:
         rec.in_window = False
         if any(warmup_s <= t <= end_s for t in rec.chunk_times):

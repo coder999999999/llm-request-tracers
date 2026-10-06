@@ -45,6 +45,70 @@ This is genuine engine behaviour, not a harness fault and not rerun. With 64 con
 - llama.cpp kvfull at 256 tokens completes very few requests in the 60 s window (7 to 18), so its medians rest on a small sample.
 - Sustained GPU clocks and temperatures during load were not logged.
 
+## Claims
+
+Every sentence of benchmark-derived text on the comparison page, with the chart point or file that backs it. Text lives in `data/pairs/llama-cpp--vllm.js`; numbers are from `data/bench/*.js` (generated from the summaries in this folder). Ratios are vLLM divided by llama.cpp.
+
+### Questions
+
+- Q1 reworded from "Why does vLLM pull ahead once many people are chatting?" to "How far does vLLM pull ahead as more people chat?". Throughput diverges with concurrency (the gap grows from 1.0x at 1 user to 2.5x at 64), so the question stays. The measurements show the gap, not its cause, so the question no longer asks "why".
+- Q2 and Q3 unchanged in wording. Q2 gained measured numbers.
+- Q4 unchanged in wording. It stays because the kvfull runs show a measurable difference: 128 of 128 llama.cpp requests failed at 512 and 1,024 tokens, against 68 and 264 vLLM preemptions with no failures and a 1,506 to 2,072 tok/s throughput. The llama.cpp 256-token median TTFT is not cited anywhere (single cohort, see KV-full findings).
+
+### Verdict, llama.cpp ("Reach for llama.cpp if")
+
+| Bullet | Backing |
+|---|---|
+| Matched vLLM at 1 user, 50.4 against 49.4 tok/s | throughput chart, 1 user; `levels[0].tok_s.median` 50.4 and 49.37 |
+| At most 1.2x behind up to 8 users | throughput chart: 2 users 97.05 / 97.40, 4 users 182.7 / 192.7, 8 users 327.3 / 379.5 (ratio 1.16) |
+| First token after 202 ms against 380 ms with a ~1,490-token system prompt | prompt reuse chart, "First message" bars; `reuse.cold_ttft_ms` 202.4 and 380.1. System prompt size: reuse section above (about 1,490 tokens) |
+| Model is a GGUF file, loader reads it | Model formats feature row, `src/llama-model-loader.cpp:570` |
+| Hardware row lists build-time backends such as CUDA and Metal | Hardware feature row, `ggml/src/ggml-backend-reg.cpp:120` |
+| Only CUDA on one RTX 4090 was measured | `env.json` gpu; Method section |
+
+### Verdict, vLLM ("Reach for vLLM if")
+
+| Bullet | Backing |
+|---|---|
+| 2,209 against 892 tok/s at 64 users, 2.5x | throughput chart, 64 users; medians 2,209.4 and 892.45, ratio 2.476 |
+| Kept serving at 512 and 1,024 tokens, 2,072 and 1,506 tok/s, by preempting; every llama.cpp request failed | KV cache chart (vLLM tok_s 2,072.3 and 1,506.5) and its table (preemptions 68 and 264; llama.cpp failed requests 128 at both); KV-full findings above; KV-full feature row (preempts a request, recomputes later) |
+| At 32 users the time before prefill was 115 ms against 420 ms | "Before prefill, at 32 users" row under the question 1 chart: TTFT minus prefill, 411.3 - 296.4 = 114.9 ms and 786.4 - 366.3 = 420.1 ms (derived, same definition on both engines) |
+
+Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `--kv-unified` with a 32,768-token shared context; vLLM `--max-model-len 2048` with 2,048 blocks). Both have the same 32,768-token budget (see `env.json` `server_args.kvfull`).
+
+### Answers
+
+| Sentence | Backing |
+|---|---|
+| q1: 50.4 and 49.4 tok/s at 1 user | throughput chart, 1 user |
+| q1: 2,209 against 892 tok/s at 64 users | throughput chart, 64 users |
+| q1: 115 ms against 420 ms before prefill at 32 users | stage-time row, as above |
+| q1: code paths differ (fixed slots against one shared token budget per step); the data does not isolate the cause | Batching feature row for both engines (`common/arg.cpp:2544`, `vllm/v1/core/sched/scheduler.py:591`) |
+| q2: about 1,490-token system prompt; 202 to 29 ms (llama.cpp), 380 to 33 ms (vLLM); roughly 7 and 11 times | prompt reuse chart; `reuse` cold/warm 202.4 / 28.7 (ratio 7.05) and 380.1 / 33.2 (ratio 11.5); Reuse section above |
+| q2: llama.cpp slot choice with similarity threshold, vLLM whole prefix blocks across requests | Prompt reuse feature row (`server-context.cpp:1657`, `kv_cache_manager.py:264`); unchanged from the earlier text |
+| q2: on the cold first message llama.cpp was faster | prompt reuse chart, "First message" bars |
+| q3: unchanged | code paths, hops and Detokenizing and Tokenizing feature rows |
+| q4: 64 users, 32,768-token KV budget | `env.json` `server_args.kvfull`; Fairness rules in the spec (§5.2) |
+| q4: 256 tokens, both finished every request, 421 and 2,185 tok/s | KV cache chart, 256 tokens; table: failed requests 0 on both. The 421 figure is counted by token arrival; see the KV-full findings for why it is far below llama.cpp's main-config 892 and why its cause is not established |
+| q4: every llama.cpp request failed at 512 and 1,024 with a context size error, after 111 and 91 retries | table rows "Replies up to 512 / 1,024 tokens" (failed 128, decode retries 111 and 91); KV-full findings (HTTP 500 "Context size has been exceeded"); KV-full feature row (retries with a smaller batch) |
+| q4: vLLM preempted 68 and 264 requests and served at 2,072 and 1,506 tok/s | table (preemptions 68 and 264), chart |
+
+### Chart annotations
+
+| Annotation | Backing |
+|---|---|
+| Throughput: "vLLM 2.5x at 64 users" | ratio of `levels` tok_s medians at 64 users |
+| Reuse: "Cold: vLLM takes 1.9x as long" | 380.1 / 202.4 |
+| Reuse: "Warm: vLLM takes 1.2x as long" | 33.2 / 28.7 (a 4.5 ms difference) |
+| KV: "vLLM: 2,185 tokens per second" (at 256) | vLLM kvFull tok_s at 256 |
+| KV: "llama.cpp: 128 failed" (at 1,024) | llama.cpp kvFull failed at 1,024; drawn at that value on the tokens-per-second axis, so its height means nothing |
+
+### Feature wording audited
+
+- vLLM `cuda_graphs`: the default comes from the optimisation level (O2 is the default, `vllm/config/vllm.py:316` maps it to FULL_AND_PIECEWISE), and `vllm/config/vllm.py` downgrades it to PIECEWISE or NONE in several cases (for example around lines 1934 to 1989). Row now reads "Default level O2: full graphs for decode, may fall back to piecewise".
+- vLLM `chat_template_source`: `vllm/renderers/hf.py` tries an explicit template, then the processor template (when no tools), then the tokenizer's, then a fallback file. Row now reads "Usually the HF tokenizer config; --chat-template overrides".
+- llama.cpp `cuda_graphs`: the top-level `CMakeLists.txt` sets `GGML_CUDA_GRAPHS_DEFAULT ON`, which only matters in CUDA builds. Row now reads "CUDA builds use graphs by default (CMake option)".
+
 ## Files
 
 Per-request records are stored as `*.jsonl.gz` (gzip of the harness's JSONL output); summaries, reuse results, `env.json` and this file are plain text. The site data in `data/bench/` is generated from the summaries only.

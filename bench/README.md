@@ -32,14 +32,31 @@ docker compose -f bench/docker-compose.yml down
 
 ## Run
 
-Filled in by later tasks.
+Everything is driven by `run_all.py` inside the `client` container. Run these from the repository root. The harness
+commit is recorded in `env.json`; the container has no `.git`, so pass it in. In Git Bash, prefix the command with
+`MSYS_NO_PATHCONV=1` so `/bench/...` is not rewritten into a Windows path.
+
+```bash
+export HARNESS_COMMIT=$(git rev-parse HEAD)
+# the full matrix (about 2 hours): every config, 3 repeats, prompt token counts checked between engines
+docker compose -f bench/docker-compose.yml run --rm -e HARNESS_COMMIT client   python run_all.py --configs main,reuse,kvfull --repeats 3 --check-tokens --out /bench/results/<date>
+# one level, for a quick rerun check (about 5 minutes after the images are built)
+docker compose -f bench/docker-compose.yml run --rm -e HARNESS_COMMIT client   python run_all.py --configs main --levels 8 --repeats 1 --out /bench/results/rerun
+```
+
+Levels whose summary already exists in `--out` are skipped (`--no-skip` reruns them). Only one GPU server runs at a
+time; `run_all.py` starts and stops each through the mounted Docker socket.
 
 `run_all.py` sends 4 untimed `max_tokens 16` probe requests after each server start (main and kvfull) to remove
 first-request JIT and clock-ramp effects. The reuse config skips the probe so its turn 1 is cold.
 
 ## Outputs
 
-Filled in by later tasks.
+`bench/results/<date>/` holds `env.json` (GPU, driver, image digests, commits, server flags), one `*.summary.json` and
+one `*.jsonl` of per-request records for every level and repeat (the committed results gzip the `.jsonl` files), the `reuse/` results, and
+`prompt_tokens_check.json`. `NOTES.md` in the committed folder lists the sanity checks, caveats and the claims behind the
+page text. The site reads only the summaries: `node bench/to-site.mjs bench/results/<date>` writes
+`data/bench/llama-cpp.js` and `data/bench/vllm.js`.
 
 ## Prompts
 

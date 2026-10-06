@@ -240,7 +240,7 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
       <div id="verdict"></div>
     </div>
     <ol class="qs">
-      <li><a href="#q1"><span>1</span><b>Why does vLLM pull ahead once many people are chatting?</b></a></li>
+      <li><a href="#q1"><span>1</span><b>How far does vLLM pull ahead as more people chat?</b></a></li>
       <li><a href="#q2"><span>2</span><b>Who reuses your prompt better?</b></a></li>
       <li><a href="#q3"><span>3</span><b>Where does your request cross a thread or process boundary?</b></a></li>
       <li><a href="#q4"><span>4</span><b>What happens when the KV cache runs out of room?</b></a></li>
@@ -338,7 +338,7 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
       <div><dt>Hardware</dt><dd>One RTX 4090, 24 GB</dd></div>
       <div><dt>Model</dt><dd>Llama 3.1 8B Instruct, 16-bit</dd></div>
       <div><dt>Versions</dt><dd id="method-versions"></dd></div>
-      <div><dt>Method</dt><dd>How the benchmark runs, how to rerun it and where the raw results live: <a href="bench/README.md">bench/README.md</a></dd></div>
+      <div><dt>Method</dt><dd>Each level is a closed loop: every simulated user sends the next request when the previous one finishes, so requests tend to arrive in groups. Three repeats per level, medians shown. Rerun instructions in <a href="bench/README.md">bench/README.md</a>; raw results and caveats in <a href="bench/results/2026-10-06/NOTES.md">NOTES.md</a>.</dd></div>
     </dl>
     <p class="more">More engines will be added, each as a data file, and each gets the same rows.</p>
   </div>

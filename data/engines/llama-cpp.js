@@ -47,7 +47,7 @@ RT.registerEngine({
       file: 'src/llama-kv-cache.h', line: 301, check: 'ring buffer of KV cells'
     },
     cuda_graphs: {
-      value: 'CUDA graphs are on by default in the CMake build',
+      value: 'CUDA builds use graphs by default (CMake option)',
       file: 'CMakeLists.txt', line: 170, check: 'GGML_CUDA_GRAPHS_DEFAULT'
     },
     model_formats: {

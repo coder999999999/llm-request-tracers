@@ -15,7 +15,7 @@ RT.registerEngine({
       file: 'vllm/entrypoints/openai/chat_completion/api_router.py', line: 42, check: '/v1/chat/completions'
     },
     chat_template_source: {
-      value: 'Template from the HF tokenizer config',
+      value: 'Usually the HF tokenizer config; --chat-template overrides',
       file: 'vllm/renderers/hf.py', line: 295, check: 'get_chat_template'
     },
     tokenize_where: {
@@ -47,8 +47,8 @@ RT.registerEngine({
       file: 'vllm/config/cache.py', line: 74, check: 'contiguous cache block'
     },
     cuda_graphs: {
-      value: 'By default: full CUDA graphs for decode, piecewise for prefill',
-      file: 'vllm/config/compilation.py', line: 629, check: 'FULL_AND_PIECEWISE mode'
+      value: 'Default level O2: full graphs for decode, may fall back to piecewise',
+      file: 'vllm/config/vllm.py', line: 316, check: 'FULL_AND_PIECEWISE'
     },
     model_formats: {
       value: 'By default loads safetensors, falling back to PyTorch bin files',

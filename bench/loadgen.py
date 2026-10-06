@@ -129,12 +129,26 @@ async def one_request(client, base_url, model, messages, max_tokens, t0, user=0,
     return rec
 
 
+@dataclass
+class LevelResult:
+    """Outcome of one load level.
+
+    `records` mixes three kinds: latency/error records (`in_window and not partial`),
+    warm-up straddlers and window-end partials (`in_window=False`), which exist only for
+    throughput. Latency consumers must filter `in_window and not partial`; use `summarize`.
+    """
+    records: list
+    warmup_s: float
+    measure_s: float
+    users: int
+
+
 def _messages(p):
     return p["messages"] if isinstance(p, dict) else p
 
 
 async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
-                    max_tokens=256, transport=None) -> list:
+                    max_tokens=256, transport=None) -> "LevelResult":
     """Closed loop with `users` workers.
 
     Latency/error records: requests that started after warm-up and finished before the
@@ -179,7 +193,7 @@ async def run_level(base_url, model, prompts, users, warmup_s=30, measure_s=60,
         rec.in_window = False
         if any(warmup_s <= t <= end_s for t in rec.chunk_times):
             records.append(rec)
-    return records
+    return LevelResult(records=records, warmup_s=warmup_s, measure_s=measure_s, users=users)
 
 
 def _pcts(values):
@@ -190,10 +204,11 @@ def _pcts(values):
     return {"median": statistics.median(s), "p90": p90}
 
 
-def summarize(records, measure_s, warmup_s=0.0) -> dict:
+def summarize(level: LevelResult) -> dict:
     """Latency/error stats come from records with in_window and not partial.
     tok_s counts content chunks that arrived in [warmup_s, warmup_s+measure_s] from every
     record, times tokens_per_chunk (sum out_tokens / sum content chunks over completed OK records)."""
+    records, warmup_s, measure_s = level.records, level.warmup_s, level.measure_s
     lat = [r for r in records if r.in_window and not r.partial]
     ok = [r for r in lat if r.ok]
     n_err = len(lat) - len(ok)
@@ -214,5 +229,5 @@ def summarize(records, measure_s, warmup_s=0.0) -> dict:
         "e2e_ms": _pcts([r.e2e_ms for r in ok if r.e2e_ms is not None]),
         "prompt_ms": _pcts([r.prompt_ms for r in ok if r.prompt_ms is not None]),
         "tokens_per_chunk": tpc,
-        "tok_s": in_win * (tpc or 0.0) / measure_s,
+        "tok_s": in_win * tpc / measure_s if tpc is not None else None,
     }

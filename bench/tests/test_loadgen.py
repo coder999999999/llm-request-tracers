@@ -8,7 +8,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import loadgen  # noqa: E402
-from loadgen import Record, one_request, run_level, summarize  # noqa: E402
+from loadgen import LevelResult, Record, one_request, run_level, summarize  # noqa: E402
 
 
 def chunk(content=None, role=None, usage=None, timings=None, finish=None):
@@ -52,6 +52,10 @@ def handler_for(events, delays, **kw):
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def lvl(records, measure_s, warmup_s=0.0):
+    return LevelResult(records=records, warmup_s=warmup_s, measure_s=measure_s, users=1)
 
 
 async def one(handler, max_tokens=8):
@@ -107,7 +111,7 @@ def test_http_503_and_broken_stream_are_errors():
             return httpx.Response(503)
         return handler_for([chunk("a")], [0.001])(req)
     recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
-                         warmup_s=0, measure_s=0.6, max_tokens=1, transport=httpx.MockTransport(flaky)))
+                         warmup_s=0, measure_s=0.6, max_tokens=1, transport=httpx.MockTransport(flaky))).records
     assert any(not r.ok for r in recs) and any(r.ok for r in recs)
 
 
@@ -115,7 +119,7 @@ def test_records_outside_window_are_dropped():
     # each request takes ~0.3s; warm-up 0.4, window 0.4..1.0
     h = handler_for([chunk("a"), chunk("b")], [0.15, 0.15])
     recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
-                         warmup_s=0.4, measure_s=0.6, max_tokens=2, transport=httpx.MockTransport(h)))
+                         warmup_s=0.4, measure_s=0.6, max_tokens=2, transport=httpx.MockTransport(h))).records
     assert recs
     for r in recs:
         if not r.in_window:
@@ -133,9 +137,9 @@ def mk(ok=True, tokens=10, chunk_times=None, **kw):
 
 
 def test_level_invalid_above_one_percent_errors():
-    s = summarize([mk() for _ in range(98)] + [mk(False), mk(False)], 60)
+    s = summarize(lvl([mk() for _ in range(98)] + [mk(False), mk(False)], 60))
     assert s["n_ok"] == 98 and s["n_err"] == 2 and s["valid"] is False
-    s = summarize([mk() for _ in range(99)] + [mk(False)], 60)
+    s = summarize(lvl([mk() for _ in range(99)] + [mk(False)], 60))
     assert s["valid"] is True and s["err_rate"] == 0.01
 
 
@@ -143,7 +147,7 @@ def test_short_outputs_are_errors_and_counted():
     h = handler_for([chunk("a"), chunk("b")], [0, 0])
     r = run(one(h, max_tokens=256))
     assert not r.ok and r.short and "short output" in r.error
-    s = summarize([mk(), mk(False, short=True)], 10)
+    s = summarize(lvl([mk(), mk(False, short=True)], 10))
     assert s["n_short"] == 1 and s["n_err"] == 1 and s["valid"] is False
 
 
@@ -151,7 +155,7 @@ def test_tok_s_steady_stream_matches_true_rate():
     # one chunk every 10 ms, true rate 100 tok/s, window 1..3 s (measure 2)
     times = [i * 0.01 for i in range(400)]
     r = mk(tokens=400, chunk_times=times)
-    s = summarize([r], 2.0, warmup_s=1.0)
+    s = summarize(lvl([r], 2.0, 1.0))
     assert s["tokens_per_chunk"] == 1.0
     assert abs(s["tok_s"] - 100.0) / 100.0 < 0.01
 
@@ -160,31 +164,38 @@ def test_tok_s_partial_request_at_window_end_counts_in_window_chunks():
     full = mk(tokens=10, chunk_times=[1.0 + 0.1 * i for i in range(10)])
     partial = Record(user=1, start_s=2.0, ok=None, partial=True, in_window=False,
                      chunk_times=[2.5, 2.8, 2.9, 3.0, 3.1, 3.4])  # window 1..3: 4 inside
-    s = summarize([full, partial], 2.0, warmup_s=1.0)
+    s = summarize(lvl([full, partial], 2.0, 1.0))
     assert s["n_ok"] == 1 and s["n_err"] == 0  # partial is not an error
     assert s["tok_s"] == (10 + 4) / 2.0
 
 
 def test_tok_s_request_straddling_warmup_counts_only_post_warmup_chunks():
     straddle = mk(tokens=8, chunk_times=[0.6, 0.8, 0.9, 1.1, 1.2, 1.3, 1.4, 1.5], in_window=False)
-    s = summarize([straddle], 1.0, warmup_s=1.0)
+    s = summarize(lvl([straddle], 1.0, 1.0))
     assert s["n_ok"] == 0 and s["tok_s"] == 5.0  # 5 chunks at or after 1.0, none of its latency counted
     full = mk(tokens=4, chunk_times=[1.6, 1.7, 1.8, 1.9])
-    s = summarize([straddle, full], 1.0, warmup_s=1.0)
+    s = summarize(lvl([straddle, full], 1.0, 1.0))
     assert s["tok_s"] == (5 + 4) / 1.0  # 5 post-warm-up chunks from the straddler
 
 
 def test_run_level_returns_partial_and_straddlers_for_throughput():
     # 10 chunks 0.05 s apart (0.5 s per request); warm-up 0.25, window ends 0.95
     h = handler_for([chunk(str(i)) for i in range(10)], [0.05] * 10)
-    recs = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
+    res = run(run_level("http://x", "m", [[{"role": "user", "content": "p"}]], 1,
                          warmup_s=0.25, measure_s=0.7, max_tokens=10,
                          transport=httpx.MockTransport(h)))
+    recs = res.records
     assert any(r.partial for r in recs)
     assert all(not r.ok for r in recs if r.partial) or all(r.ok is None for r in recs if r.partial)
     assert any(not r.in_window and not r.partial for r in recs)
-    s = summarize(recs, 0.7, warmup_s=0.25)
-    assert s["n_err"] == 0
+    s = summarize(res)
+    assert (res.warmup_s, res.measure_s, res.users) == (0.25, 0.7, 1)
+    assert s["n_err"] == 0 and s["tokens_per_chunk"] == 1.0
     n = sum(1 for r in recs for t in r.chunk_times if 0.25 <= t <= 0.95)
-    assert 11 <= n <= 15  # about 14 chunks at 20/s over 0.7 s
-    assert s["tok_s"] > 0
+    assert s["tok_s"] == n / 0.7  # computed from arrival times in the window
+    assert 14 <= s["tok_s"] <= 26  # synthetic stream runs at about 20 chunks/s
+
+
+def test_no_ok_record_gives_none_throughput():
+    s = summarize(lvl([mk(False, chunk_times=[1.1])], 1.0, 1.0))
+    assert s["tok_s"] is None and s["tokens_per_chunk"] is None

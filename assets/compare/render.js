@@ -52,7 +52,7 @@
       (extra ? ' <em>' + esc(extra) + '</em>' : '') + '</h4>';
   }
   function srcLink(engine, file, line) {
-    return '<a class="src" href="' + esc(RTU.srcURL(engine, file, line)) + '" title="' + esc(file + ':' + line) + '">' +
+    return '<a class="src" href="' + esc(RTU.srcURL(engine, file, line)) + '" title="' + esc(file + ':' + line) + '" data-tip="' + esc(file + ':' + line) + '">' +
       esc(RTU.shortPath(file) + ':' + line) + '</a>';
   }
   function figure(title, sub, inner) {
@@ -76,9 +76,17 @@
 
   // ---- code paths -------------------------------------------------------
 
+  // A step's fn is code only when it looks like an identifier or a call. Pipelines
+  // and comments (spaces, arrows, pipes, //) are prose, so they render as plain text.
+  var CODE_LIKE = /^[\w:.<>~\[\]]+(\(\))?$/;
+  function fnHtml(fn) {
+    var f = String(fn === undefined || fn === null ? '' : fn);
+    return CODE_LIKE.test(f) ? '<code>' + esc(f) + '</code>' : '<span class="fn">' + txt(f) + '</span>';
+  }
+
   function stepHtml(engine, s) {
     return '<div class="step"><b>' + txt(s.title) + '</b>' + srcLink(engine, s.file, s.line) +
-      '<code>' + esc(s.fn) + '</code></div>';
+      fnHtml(s.fn) + '</div>';
   }
 
   // Lists steps in order. With onlyKey set, hidden steps are skipped, but a hop

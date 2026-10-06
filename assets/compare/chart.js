@@ -148,7 +148,7 @@
     series.forEach(function (sr) {
       sr.points.forEach(function (p) {
         var t = pointTitle(sr.label, p[0], xUnit, p[1], p[2], p[3]);
-        s += '<circle cx="' + r1(X(p[0])) + '" cy="' + r1(Y(p[1])) + '" r="5" fill="' + sr.color + '" tabindex="0" role="img" aria-label="' + esc(t) + '"><title>' + esc(t) + '</title></circle>';
+        s += '<circle cx="' + r1(X(p[0])) + '" cy="' + r1(Y(p[1])) + '" r="5" fill="' + sr.color + '" tabindex="0" role="img" aria-label="' + esc(t) + '" data-tip="' + esc(t) + '"><title>' + esc(t) + '</title></circle>';
       });
     });
 

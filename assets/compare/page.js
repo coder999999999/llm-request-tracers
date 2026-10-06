@@ -188,6 +188,46 @@
     });
   }
 
+  // ---- tooltips ---------------------------------------------------------
+
+  // Anything with data-tip (chart points, source links) shows its text on hover and
+  // on keyboard focus. The native title is dropped on first use so only one shows.
+  function wireTips() {
+    var tip = document.createElement('div');
+    tip.className = 'tip';
+    tip.id = 'tip';
+    tip.setAttribute('role', 'tooltip');
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    var current = null;
+    function tipOf(t) { return t && t.closest ? t.closest('[data-tip]') : null; }
+    function show(el) {
+      var text = el.getAttribute('data-tip');
+      if (!text) return;
+      el.removeAttribute('title');
+      var t = el.querySelector('title');
+      if (t) el.removeChild(t);
+      current = el;
+      tip.textContent = text;
+      tip.hidden = false;
+      var r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), Math.max(8, window.innerWidth - w - 8));
+      var top = r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8;
+      tip.style.left = Math.round(left) + 'px';
+      tip.style.top = Math.round(top) + 'px';
+    }
+    function hide() { current = null; tip.hidden = true; }
+    document.addEventListener('mouseover', function (e) { var el = tipOf(e.target); if (el) show(el); else if (current) hide(); });
+    document.addEventListener('focusin', function (e) {
+      var el = tipOf(e.target), vis = false;
+      if (el) { try { vis = el.matches(':focus-visible'); } catch (x) { vis = true; } }
+      if (el && vis) show(el); else hide();
+    });
+    document.addEventListener('focusout', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+    window.addEventListener('scroll', function () { if (current && !tip.hidden) show(current); }, { passive: true });
+  }
+
   // ---- Episode 1 player -------------------------------------------------
 
   function wirePlayer() {
@@ -209,6 +249,7 @@
   wireTrack($('chapters'));
   wirePicker();
   wirePlayer();
+  wireTips();
   wireResize();
   render();
 })();

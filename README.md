@@ -23,7 +23,7 @@ Open `index.html` in a browser. Press **Trace** or use the arrow keys to step; c
 The site renders from `data/`:
 
 - `registry.js`: Global registry (window.RT) for engines, pairs, benchmarks, and validation.
-- `compare.js`: Comparison metadata: stages (request flow phases), questions (side-by-side comparisons), and features (yes/no traits).
+- `compare.js`: Comparison metadata: stages (request flow phases), questions (side-by-side comparisons), and the feature catalogue (each engine answers a feature with one short sourced sentence and a file and line, not a yes or no).
 - `engines/`: LLM inference engine definitions.
   - `<id>.js`: Hand-written engine metadata (name, color, repo URL, commit hash, tracer HTML file, shape, and feature values).
   - `<id>.steps.js`: Generated step traces from the tracer page (produced by `node tools/export-steps.mjs`).

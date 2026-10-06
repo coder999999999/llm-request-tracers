@@ -209,7 +209,8 @@ def test_tok_s_counts_only_ok_records_in_window():
 
 **Interfaces:**
 - Consumes: a results tree from Task 5.
-- Produces: `data/bench/llama-cpp.js` and `data/bench/vllm.js`, each `RT.registerBench({...})`, shaped exactly as page plan Task 5:
+- Produces: `data/bench/llama-cpp.js` and `data/bench/vllm.js`, each `RT.registerBench({ id: 'llama-cpp' | 'vllm', run, levels, reuse, kvFull })` (`registerBench` rejects an object without `id`), shaped exactly as page plan Task 5:
+  - `id`: the engine id, `'llama-cpp'` in `data/bench/llama-cpp.js` and `'vllm'` in `data/bench/vllm.js`
   - `run: {date, gpu, model, commit, config}`
   - `levels: [{users, ttft_ms:{median,min,max}, tok_s:{median,min,max}, itl_ms:{median,min,max}, e2e_ms:{median,min,max}, prefill_ms?:{median,min,max}, queue_ms?:{median,min,max}}]`
     - median across repeats of each repeat's median; min and max across repeats
@@ -222,7 +223,7 @@ def test_tok_s_counts_only_ok_records_in_window():
 - [ ] **Step 1: Write the failing tests.**
   - The fixture tree gives the expected `levels[0]` medians.
   - A level with `valid: false` for one engine is absent from that engine's file and present in the other's.
-  - The output file runs in `loadSiteData` with `RT.errors` empty.
+  - The output files run in `loadSiteData` with `RT.errors` empty, and `RT.bench['llama-cpp']` and `RT.bench.vllm` both exist.
 - [ ] **Step 2: Implement, then run** `npm test`. Expected: PASS.
 - [ ] **Step 3: Commit.** `git commit -m "Add results-to-site data generator"`
 
@@ -257,7 +258,7 @@ def test_tok_s_counts_only_ok_records_in_window():
 - [ ] **Step 2: Write the pair file content.**
   - `verdict.a` / `verdict.b`: three bullets each.
   - `answers.q1` and `answers.q4`: two or three sentences each, revisiting q2 and q3 if the data changes them.
-  - `annotations`: one or two per chart, using `RTU.annotate` specs, for example `{x:64, metric:'tok_s', kind:'ratio', text:'{v}× at 64 users'}`.
+  - `annotations`: one or two per chart, using `RTU.annotate` specs, for example `{x:64, metric:'tok_s', kind:'ratio', text:'{v}× at 64 users'}`. The reuse chart takes `{source:'reuse', metric:'warm_ttft_ms', ...}` and the KV chart `{source:'kvFull', x:1024, metric:'tok_s', ...}` (spec §4).
 
   Every sentence names something visible in a chart or a code list on the page. Follow spec §7.1 copy rules: no first person, plain and specific.
 - [ ] **Step 3: Cross-check claims.** For each verdict bullet and answer, list the chart point or source line that backs it in `bench/results/<date>/NOTES.md` under "Claims". Delete any claim without a backing line.

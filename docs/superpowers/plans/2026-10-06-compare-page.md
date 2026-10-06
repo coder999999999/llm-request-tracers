@@ -209,7 +209,7 @@ test('a 404 is a miss with the URL, not a throw', async () => {
 
 **Interfaces:**
 - Consumes: `RT`, `RTU` (Task 1). Bench shape from the benchmark plan, Task 6:
-  - `RT.bench[id] = { run:{date,gpu,model,commit,config}, levels:[{users, ttft_ms, tok_s, itl_ms, e2e_ms, prefill_ms?, queue_ms?}], reuse?:{cold_ttft_ms, warm_ttft_ms}, kvFull?:[{max_tokens, tok_s, ttft_ms, preemptions?, kv_retries?, failed}] }`
+  - `RT.bench[id] = { id, run:{date,gpu,model,commit,config}, levels:[{users, ttft_ms, tok_s, itl_ms, e2e_ms, prefill_ms?, queue_ms?}], reuse?:{cold_ttft_ms, warm_ttft_ms}, kvFull?:[{max_tokens, tok_s, ttft_ms, preemptions?, kv_retries?, failed}] }`
   - Every metric inside `levels` is `{median,min,max}`. `kvFull` values are plain numbers.
 - Produces:
   - `RTC.lineChart({series:[{label,color,points:[[x,y,min?,max?]]}], xTicks, xLabel, yLabel, annotations:[{x, y, text}], ariaLabel, width, height}) -> string`. SVG with:
@@ -218,10 +218,10 @@ test('a 404 is a miss with the URL, not a throw', async () => {
     - each point a focusable `<circle tabindex="0">` whose `<title>` reads `"<label>, <x> users: <y> (range <min>–<max>)"` (spec §7)
     - a visually hidden `<table>` of the points after it
   - `RTC.barPairs({groups:[{label, values:[{label, color, v}]}], unit, ariaLabel, width}) -> string`: grouped horizontal bars for Q2 (groups "First message" and "Repeat with the same system prompt"), value printed at each bar end, same hidden table.
-  - `RTU.annotate(spec, ctx) -> {x, y, text} | null`, with `spec = {x, metric:'tok_s'|'ttft_ms', kind:'ratio'|'value', engine?, text}`. `text` holds `{v}`. `ratio` is b ÷ a at `x`, rounded to 1 decimal; `value` is that engine's median. Returns null when either engine lacks the point, so the annotation is skipped, never shown with a blank number. Pair files store `annotations: { q1:[spec…], … }`.
-  - `RTU.stageTimes(bench, users) -> null | { think:{ms, note:'reported'}, wait:{ms, note:'reported'|'queue + overhead'}, other:{ms, note:'derived'}|null }`. Follows spec §5.5:
-    - vLLM: queue and prefill as reported; other = TTFT − queue − prefill.
-    - llama.cpp: `wait.ms` = TTFT − `prefill_ms` with note `'queue + overhead'`, and `other` = null.
+  - `RTU.annotate(spec, ctx) -> {x, y, text} | null`, with `spec = {source?:'levels'|'reuse'|'kvFull', x, metric, kind:'ratio'|'value', engine?, text}` (`source` defaults to `'levels'`; `reuse` ignores `x`; `kvFull` reads `max_tokens === x`). `text` holds `{v}`. `ratio` is b ÷ a at `x`, rounded to 1 decimal; `value` is that engine's median. Returns null when either engine lacks the point, so the annotation is skipped, never shown with a blank number. Pair files store `annotations: { q1:[spec…], … }`.
+  - `RTU.stageTimes(bench, users) -> null | { think:{ms, note:'reported'}, wait:{ms, note:'derived', queue: number|null} }`. Follows spec §5.5:
+    - Both engines: `think.ms` is the reported prefill and `wait.ms` = TTFT − prefill (derived, same definition).
+    - `wait.queue` is the reported queue time where the engine reports one (vLLM), else null; the page prints it as a note under that engine's bar.
   - `RTR.codeList(engine, stageId, {all:false}) -> string`
   - `RTR.featureRows(stageId|null, ctx) -> string`
   - `RTR.evidence(question, ctx) -> string`
@@ -239,10 +239,10 @@ test('chart has direct end labels and ≤4 gridlines', () => {
   assert.ok((svg.match(/class="grid"/g)||[]).length <= 4); assert.match(svg, /<table class="sr-only"/); });
 test('points are focusable and show the repeat range', () =>
   assert.match(RTC.lineChart(twoSeries), /<circle[^>]*tabindex="0"[^>]*><title>vLLM, 64 users: 2,700 (range 2,650–2,760)</title>/));
-test('vLLM stage times use reported queue and prefill', () =>
-  assert.deepEqual(RTU.stageTimes(vllmBench, 32), {think:{ms:40,note:'reported'}, wait:{ms:4,note:'reported'}, other:{ms:11,note:'derived'}}));
-test('llama.cpp folds queue and overhead together', () =>
-  assert.deepEqual(RTU.stageTimes(llamaBench, 32), {think:{ms:38,note:'reported'}, wait:{ms:22,note:'queue + overhead'}, other:null}));
+test('vLLM stage times: prefill reported, before-prefill derived, queue as a note', () =>
+  assert.deepEqual(RTU.stageTimes(vllmBench, 32), {think:{ms:40,note:'reported'}, wait:{ms:15,note:'derived',queue:4}}));
+test('llama.cpp uses the same definition and has no queue figure', () =>
+  assert.deepEqual(RTU.stageTimes(llamaBench, 32), {think:{ms:38,note:'reported'}, wait:{ms:22,note:'derived',queue:null}}));
 test('annotation ratio is computed from bench, not typed', () =>
   assert.equal(RTU.annotate({x:64,metric:'tok_s',kind:'ratio',text:'{v}× at 64 users'}, ctx).text, '5.5× at 64 users'));
 test('annotation is skipped when a point is missing', () =>

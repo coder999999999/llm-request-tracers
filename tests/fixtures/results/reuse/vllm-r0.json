@@ -1,0 +1,33 @@
+{
+  "engine": "vllm",
+  "repeat": 0,
+  "cold_ttft_ms": 1100,
+  "warm_ttft_ms": 40,
+  "valid": true,
+  "turns": [
+    {
+      "turn": 1,
+      "ttft_ms": 1100,
+      "prompt_tokens": 500,
+      "cache_n": 0
+    },
+    {
+      "turn": 2,
+      "ttft_ms": 40,
+      "prompt_tokens": 500,
+      "cache_n": null
+    },
+    {
+      "turn": 3,
+      "ttft_ms": 40,
+      "prompt_tokens": 500,
+      "cache_n": null
+    },
+    {
+      "turn": 4,
+      "ttft_ms": 40,
+      "prompt_tokens": 500,
+      "cache_n": null
+    }
+  ]
+}

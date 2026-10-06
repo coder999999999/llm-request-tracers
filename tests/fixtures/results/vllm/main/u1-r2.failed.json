@@ -1,0 +1,9 @@
+{
+  "engine": "vllm",
+  "config": "main",
+  "users": 1,
+  "repeat": 2,
+  "error_type": "TimeoutError",
+  "message": "not healthy",
+  "log_tail": []
+}

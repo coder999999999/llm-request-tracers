@@ -1,0 +1,35 @@
+{
+  "engine": "llama",
+  "config": "reuse",
+  "repeats": 2,
+  "cold_ttft_ms": 1200,
+  "warm_ttft_ms": 90,
+  "valid": true,
+  "turns": [
+    {
+      "turn": 1,
+      "ttft_ms": 1200,
+      "prompt_tokens": 500,
+      "cache_n": 0
+    },
+    {
+      "turn": 2,
+      "ttft_ms": 90,
+      "prompt_tokens": 500,
+      "cache_n": 480
+    },
+    {
+      "turn": 3,
+      "ttft_ms": 90,
+      "prompt_tokens": 500,
+      "cache_n": 480
+    },
+    {
+      "turn": 4,
+      "ttft_ms": 90,
+      "prompt_tokens": 500,
+      "cache_n": 480
+    }
+  ],
+  "per_repeat": []
+}

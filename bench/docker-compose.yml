@@ -1,0 +1,81 @@
+# Benchmark services. Only one inference server runs on the GPU at a time.
+# Servers and the converter sit under profiles, so `up` with no service name starts nothing.
+# Naming a service explicitly (for example `docker compose up -d llama`) activates its profile.
+name: rtbench
+
+x-llama-build: &llama-build
+  context: ./.src/llama.cpp   # pinned commit 2ca15f5404760548c39e7b92bd43116a09414a1a, see fetch_llama_src.sh
+  dockerfile: .devops/cuda.Dockerfile
+  args:
+    CUDA_DOCKER_ARCH: "89"
+
+x-gpu: &gpu
+  reservations:
+    devices:
+      - driver: nvidia
+        count: all
+        capabilities: [gpu]
+
+services:
+  llama:
+    profiles: [llama]
+    image: rtbench/llama:2ca15f5
+    build:
+      <<: *llama-build
+      target: server
+    deploy:
+      resources: *gpu
+    ports:
+      - "8080:8080"
+    volumes:
+      - rt-models:/models
+    # Main config; LLAMA_ARGS is appended and can override flags (the last one wins).
+    command: >-
+      -m /models/Llama-3.1-8B-Instruct-F16.gguf -ngl 999 -c 32768 -np 64
+      --alias llama-3.1-8b --metrics --host 0.0.0.0 --port 8080 ${LLAMA_ARGS:-}
+
+  vllm:
+    profiles: [vllm]
+    image: public.ecr.aws/q9t5s3a7/vllm-ci-postmerge-repo:138810056093301f4881050fcf2b1786939da387
+    ipc: host
+    # The CI image bakes in VLLM_GPU_SYNC_CHECK=error (a debug mode that crashes on the
+    # first request), so unset it before starting the server.
+    entrypoint: ["sh", "-c", "unset VLLM_GPU_SYNC_CHECK; exec vllm serve \"$$@\"", "vllm"]
+    deploy:
+      resources: *gpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - rt-models:/models
+    command: >-
+      --model /models/hf/Llama-3.1-8B-Instruct --served-model-name llama-3.1-8b
+      --dtype bfloat16 --num-gpu-blocks-override 2048 --max-model-len 512
+      --port 8000 ${VLLM_ARGS:-}
+
+  llama-tools:
+    profiles: [tools]
+    image: rtbench/llama-tools:2ca15f5
+    build:
+      <<: *llama-build
+      target: full
+    volumes:
+      - rt-models:/models
+
+  client:
+    image: rtbench/client:latest
+    build:
+      context: .
+      dockerfile: client.Dockerfile
+    working_dir: /bench
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - rt-models:/models
+      - ./:/bench
+      - ../data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  rt-models:
+    name: rt-models

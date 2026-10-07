@@ -27,6 +27,11 @@ function prose() {
       for (const [id, text] of Object.entries(per)) out.push([`${key} stageSummaries.${stage}.${id}`, text]);
     }
     for (const [q, text] of Object.entries(p.answers || {})) out.push([`${key} answers.${q}`, text]);
+    if (p.headline) out.push([`${key} headline`, p.headline]);
+    for (const [q, t] of Object.entries(p.teasers || {})) {
+      out.push([`${key} teasers.${q}`, t.text]);
+      if (t.unit) out.push([`${key} teasers.${q} unit`, t.unit]);
+    }
     if (p.verdict) {
       const v = [].concat(p.verdict.a || [], p.verdict.b || []);
       v.forEach((t, i) => out.push([`${key} verdict[${i}]`, t]));

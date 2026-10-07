@@ -1,5 +1,5 @@
 // Write-up for the llama.cpp vs vLLM pair. Stage summaries and q3 restate the engine
-// files (steps, hops, features). The verdict, q1, q2 and q4 answers and the annotations
+// files (steps, hops, features). The headline, teasers, verdict, q1, q2 and q4 answers and the annotations
 // restate the 2026-10-06 benchmark; each is listed with its source in
 // bench/results/2026-10-06/NOTES.md under "Claims".
 RT.registerPair({
@@ -28,16 +28,25 @@ RT.registerPair({
     q4: 'Both servers were given 64 users and a 32,768-token KV budget. With replies capped at 256 tokens both engines finished every request. At 512 and 1,024 tokens every llama.cpp request failed with a context size error, after it had retried with smaller batches (111 and 91 retries). vLLM preempted requests, 68 and 264 of them, and kept serving at 2,072 and 1,506 tokens per second.',
     q3: 'llama.cpp stays in one process and crosses a thread boundary twice: the HTTP thread hands the request to the inference thread, and results come back the same way. vLLM crosses a process boundary twice, with ZMQ carrying the request into the EngineCore, where an input socket thread receives it, and the outputs back to the API process after an output socket thread sends them. It also renders the chat template on a thread pool. llama.cpp detokenizes on the inference thread, while vLLM does it in the API process.'
   },
+  // One sentence for the top of the page, and a one-line answer per question for the
+  // question list. A teaser's stat is the one number to remember, unit says what it
+  // counts, and engine colours it.
+  headline: 'With one person chatting, the two are even. With 64 people chatting at once, vLLM puts out 2.5 times as much text.',
+  teasers: {
+    q1: { stat: '2.5×', unit: 'vLLM output at 64 users', engine: 'vllm', text: 'Even at 1 user. At 64 users vLLM puts out 2.5 times as much text.' },
+    q2: { stat: 'Even', unit: 'on prompt reuse', text: 'Both answer a repeat message 5 to 6 times faster than the first one.' },
+    q3: { stat: '1 vs 2', unit: 'processes', text: 'llama.cpp hands your request between threads in one process. vLLM hands it between two processes.' },
+    q4: { stat: '128 of 128', unit: 'llama.cpp requests failed', engine: 'llama-cpp', text: 'Once long replies filled the cache, every llama.cpp request failed. vLLM paused some requests and kept serving.' }
+  },
   verdict: {
     a: [
-      'a few people chat at a time. At 1 user it matched vLLM, 50.4 against 49.4 tokens per second, and was at most 1.2 times behind it up to 8 users (throughput chart).',
-      'every message repeats a long system prompt. With about 1,490 tokens of it, repeat messages reached the first token in 29 ms against 34 ms for vLLM, and the first message in 166 ms against 175 ms (prompt reuse chart).',
-      'your model is a GGUF file. That is the format its loader reads, and its Hardware row lists build-time backends such as CUDA and Metal. Only CUDA on one RTX 4090 was measured.'
+      'only a few people chat at once. Up to 8 users it stays within 1.2 times of vLLM.',
+      'your model is a GGUF file, the format llama.cpp loads.'
     ],
     b: [
-      'many people chat at once. At 64 users it produced 2,209 tokens per second against 892, 2.5 times as many (throughput chart).',
-      'replies can run long and fill the KV cache. At 512 and 1,024 tokens per reply it kept serving at 2,072 and 1,506 tokens per second by preempting requests, where every llama.cpp request failed (KV cache chart).',
-      'requests should start processing quickly under load. At 32 users the time before prefill was 115 ms, against 420 ms for llama.cpp (Before prefill row under the question 1 chart, derived).'
+      'many people chat at once. At 64 users it puts out 2.5 times as much text.',
+      'replies run long. When the cache filled it kept serving, where every llama.cpp request failed.',
+      'requests must start fast under load. At 32 users they waited about 115 ms before work began, against 420 ms.'
     ]
   },
   annotations: {

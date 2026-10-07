@@ -123,6 +123,24 @@
     var host = $('verdict');
     host.className = html ? 'verdict' : '';
     host.innerHTML = html;
+    // Optional hero parts: each fills only if the page has its container.
+    var head = $('headline');
+    if (head) head.innerHTML = RTR.headline(ctx);
+    var chart = $('hero-chart');
+    if (chart) chart.innerHTML = RTR.heroChart(ctx);
+    // Each question in the list gets its stat, unit and one-line answer; a pair
+    // without teasers leaves them empty, and the list drops its stat column.
+    var anyTeaser = false;
+    document.querySelectorAll('[data-teaser]').forEach(function (el) {
+      var t = RTR.teaser(ctx, el.getAttribute('data-teaser'));
+      if (t) anyTeaser = true;
+      var stat = el.querySelector('.stat'), unit = el.querySelector('.unit'), text = el.querySelector('.tt');
+      if (stat) { stat.innerHTML = t ? t.stat : ''; stat.style.color = t ? t.color : ''; }
+      if (unit) unit.innerHTML = t ? t.unit : '';
+      if (text) text.innerHTML = t ? t.text : '';
+    });
+    var qs = document.querySelector('.qs');
+    if (qs) qs.classList.toggle('no-stats', !anyTeaser);
   }
 
   function renderMethod() {
@@ -183,7 +201,10 @@
         if (now === narrow) return;
         narrow = now;
         var ctx = currentPair();
-        if (ctx) renderChapters(ctx);
+        if (!ctx) return;
+        renderChapters(ctx);
+        var chart = $('hero-chart');
+        if (chart) chart.innerHTML = RTR.heroChart(ctx);
       }, 150);
     });
   }

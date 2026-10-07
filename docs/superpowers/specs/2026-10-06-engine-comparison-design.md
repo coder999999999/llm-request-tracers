@@ -32,11 +32,13 @@ Turn the start page into a comparison of two inference servers, **llama.cpp vs v
 
 The reference mockups live outside the repo, in `../mockups/` (`v1-paper`, `v2-workbench`, `v3-editorial`, `v4-polished`; **v4 is the visual reference**). Their performance numbers are placeholders.
 
-## 3. Page structure (`index.html`)
+## 3. Page structure (`index.html` and `tracers.html`)
 
-From top to bottom:
+(Revised 2026-10-07: the single page was about 18,000 px tall on a desktop, because each chapter carried its stage's code paths and feature tables and "Every stage" repeated them. The site is now two pages. `index.html` answers the questions with measurements; `tracers.html` holds the tracers and the code. Together they are about 9,000 and 4,300 px tall on a desktop.)
 
-1. **Top bar.** The "One Request, Traced" wordmark on the left, section links on the right (Comparison, Tracers, Method). The compare picker appears in the bar only once a third engine is registered; until then the engine names in the H1 do that job. The plan to add engines is mentioned in one line in the Method section.
+`index.html`, from top to bottom:
+
+1. **Top bar.** The "One Request, Traced" wordmark on the left, links on the right: Compare (this page), Tracers and code (`tracers.html`), Method. Both pages share it, with the current page marked, and links between the pages keep the `?a=..&b=..` pair. The compare picker appears in the bar only once a third engine is registered; until then the engine names in the H1 do that job. The plan to add engines is mentioned in one line in the Method section.
 2. **Hero**, one column. The page answers first, then shows the evidence, then lists the questions. (Revised 2026-10-06: the first layout put the verdict under the H1 and the questions in a right column, so readers met conclusions that cited charts they had not seen yet.)
    - H1 "llama.cpp or vLLM?" with each name in its engine colour, in the engines' own casing (not uppercased).
    - The headline: one sentence that answers the page's question (pair file `headline`).
@@ -50,7 +52,7 @@ From top to bottom:
    4. What happens when the KV cache runs out of room? (Think)
 
    The wording of questions 1 and 4 is provisional until the benchmark confirms the behaviour they describe.
-4. **Chapters**, one per question. Two-column grid: main column, plus a 280px sticky track column at ≥1100px. Main column, top to bottom:
+4. **Chapters**, one per question, in one column at most 760px wide. Top to bottom:
    - a small counter, "1 of 4", in plain sans
    - the question as an H2
    - the answer: 2–3 sentences from the pair file
@@ -60,16 +62,20 @@ From top to bottom:
      - Q3: no chart; a boundary diagram instead
      - Q4: preemptions or failed requests vs concurrency at a fixed KV budget
    - **stage-time row** (the part taken from V2): for the chapter's stage, each engine's time and the gap between them, at 1 user and at 32 users. Both engines are measured the same way, from server-reported numbers (see §5.5).
-   - **code paths**: two ruled lists side by side, each headed by its engine name in its colour. Each lists that engine's steps for the stage: title, function, file:line linked to the pinned commit, and, where the request crosses a boundary, a short dashed rule with a plain sentence such as "Crosses into the EngineCore process over ZMQ".
-   - **feature rows** for the stage: label, engine A value, engine B value, each with a source link
-   - links: "Open the llama.cpp tracer" and "Open the vLLM tracer", plus "Next question"
+   - links: one per stage of the chapter, "The Wait code in both engines", to that stage's row on `tracers.html` (`#stage-wait`), plus "Next question". The code paths and feature rows are no longer in the chapters, and neither is the pinned stage track.
+5. **So which one?** The verdict (see the hero notes above).
+6. **How this was measured.** Hardware, versions, model, method summary, links to `bench/README.md` and raw results. The long "Server settings" and "Against published numbers" paragraphs are folded behind "Show details" under a one-sentence summary each.
+7. **Footer.** Pinned commits, the not-affiliated line.
 
-   **Pinned track** (side column): two vertical lanes, one per engine colour. They are split into the four stages, with step counts and hop markers, and the current chapter's stage is highlighted using IntersectionObserver. Clicking a stage scrolls to its row in "Every stage". Below 1100px the track becomes a horizontal four-stage strip at the top of each chapter, not sticky.
-5. **Every stage.** A compact reference table, four rows (one per stage). Each row: a one-line summary per engine, step count, time per stage, and an expander showing that stage's code-path lists and feature rows. This guarantees full coverage, including Speak, which no question owns.
-6. **Deep dives.** The three tracer cards as they are on today's start page: close-up image, one line, link.
-7. **The films.** Removed from the site for now (2026-10-07), along with the Episode 1 player and the Episode 1 button on the llama.cpp tracer. The video files and `docs/video-series.md` stay in the repo.
-8. **How this was measured.** Hardware, versions, model, method summary, links to `bench/README.md` and raw results.
-9. **Footer.** Pinned commits, the not-affiliated line, credits.
+`tracers.html`, from top to bottom:
+
+1. **Top bar**, as above.
+2. **Heading**: "Tracers and code" and one sentence on what the page holds.
+3. **The tracers.** The three tracer cards: close-up image, one line, link. Each tracer's "All tracers" link returns here.
+4. **Every stage.** A horizontal **stage track** (two lanes, one per engine colour, split into the four stages with step counts and hop markers; clicking a stage opens and scrolls to its row), then four rows, one per stage, and a General row. Each row: a one-line summary per engine, step count, time per stage, and an expander showing that stage's **code paths** (two ruled lists side by side, each headed by its engine name in its colour: title, function, file:line linked to the pinned commit, and a short dashed rule with a plain sentence where the request crosses a boundary) and **feature rows** (label, engine A value, engine B value, each with a source link). Arriving at `tracers.html#stage-think` opens that row.
+5. **Footer**, as above.
+
+**The films.** Removed from the site for now (2026-10-07), along with the Episode 1 player and the Episode 1 button on the llama.cpp tracer. The video files and `docs/video-series.md` stay in the repo.
 
 No first person anywhere. All performance numbers and verdict text come from data files, never typed into the HTML.
 
@@ -262,7 +268,7 @@ Phases 1 and 2 can run in parallel. Nothing is pushed to `main` (and so to GitHu
 
 - `check-sources.mjs` passes.
 - Headless renders at 1440, 1024 and 390 px: no horizontal overflow, no console errors, and the pinned track highlights the right stage while scrolling.
-- Opening `index.html` from `file://` renders the same as over HTTP.
+- Opening `index.html` or `tracers.html` from `file://` renders the same as over HTTP.
 - A fake third engine file, used only in a test and never committed, appears in the picker, and the page still renders with "Not covered yet" and "No write-up for this pair yet".
 - The benchmark is rerun once end to end from `bench/README.md` on a clean checkout before publishing.
 

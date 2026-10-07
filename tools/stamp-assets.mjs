@@ -1,4 +1,5 @@
-// Tags every local <script src> in the site's HTML pages with ?v=<hash of the file>,
+// Tags every local <script src> and stylesheet <link href> in the site's HTML pages
+// with ?v=<hash of the file>,
 // so a browser holding an old copy fetches the new one as soon as the file changes.
 // GitHub Pages lets browsers reuse files for 10 minutes; without the tag a returning
 // visitor can get a new page with old scripts.
@@ -12,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SCRIPT_SRC = /(<script\b[^>]*\bsrc=")([^"?#]+)(?:\?v=[^"#]*)?(")/g;
+const ASSET_REF = /(<script\b[^>]*\bsrc="|<link\b[^>]*\brel="stylesheet"[^>]*\bhref=")([^"?#]+)(?:\?v=[^"#]*)?(")/g;
 
 export function fileHash(file) {
   const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
@@ -21,10 +22,10 @@ export function fileHash(file) {
 
 function isLocal(src) { return !/^([a-z]+:)?\/\//i.test(src); }
 
-// Returns the page with each local script's tag set to its current hash. A script
-// whose file is missing (benchmark results before a run) keeps its src untagged.
+// Returns the page with each local script's and stylesheet's tag set to its current
+// hash. A file that is missing (benchmark results before a run) stays untagged.
 export function stampHtml(html, root) {
-  return html.replace(SCRIPT_SRC, (all, head, src, tail) => {
+  return html.replace(ASSET_REF, (all, head, src, tail) => {
     if (!isLocal(src)) return all;
     const file = path.join(root, src);
     if (!fs.existsSync(file)) return head + src + tail;

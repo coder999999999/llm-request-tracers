@@ -1,6 +1,6 @@
 // End-to-end smoke test: serves the repo over HTTP, drives the installed Chrome
-// (puppeteer-core) and checks the start page at three widths, over http:// and
-// file://. Run with: npm run test:e2e
+// (puppeteer-core) and checks the comparison page (index.html) and the tracers page
+// (tracers.html) at three widths, over http:// and file://. Run with: npm run test:e2e
 //
 // A fake third engine is added without touching production code: a request
 // interceptor appends registration calls to the response body of data/compare.js,
@@ -125,8 +125,9 @@ async function layoutChecks(browser, base, mode) {
     const m = await page.evaluate(() => ({
       sw: document.documentElement.scrollWidth, bw: document.body.scrollWidth, iw: window.innerWidth,
       chapters: document.querySelectorAll('.chapter').length,
-      ids: ['chapters', 'every-stage', 'deep-dives', 'method'].filter(id => !document.getElementById(id)),
-      rows: document.querySelectorAll('.stage-row').length,
+      ids: ['chapters', 'method'].filter(id => !document.getElementById(id)),
+      moved: document.querySelectorAll('#every-stage, #deep-dives, .chapter .paths, .chapter > div > .facts, .chapter aside').length,
+      codeLinks: [...document.querySelectorAll('.chapter .links a[href^="tracers.html"]')].map(a => a.getAttribute('href')),
       links: [...document.querySelectorAll('.qs a')].map(a => a.getAttribute('href')),
       picker: document.querySelectorAll('#picker select').length,
       text: document.body.innerText,
@@ -138,7 +139,9 @@ async function layoutChecks(browser, base, mode) {
     ok(m.sw <= m.iw && m.bw <= m.iw, where, `horizontal overflow (scrollWidth ${m.sw}, body ${m.bw}, window ${m.iw})`);
     ok(m.chapters === 4, where, `expected 4 .chapter, found ${m.chapters}`);
     ok(m.ids.length === 0, where, `missing containers: ${m.ids.join(', ')}`);
-    ok(m.rows >= 5, where, `expected 4 stage rows and a General row, found ${m.rows}`);
+    ok(m.moved === 0, where, 'code paths, feature tables or the stage track are still on the comparison page');
+    ok(JSON.stringify(m.codeLinks) === JSON.stringify(['tracers.html#stage-wait', 'tracers.html#stage-think', 'tracers.html#stage-arrive', 'tracers.html#stage-speak', 'tracers.html#stage-think']),
+      where, 'chapter code links: ' + m.codeLinks.join(' '));
     ok(JSON.stringify(m.links) === JSON.stringify(['#q1', '#q2', '#q3', '#q4']), where, `question links: ${m.links}`);
     ok(m.picker === 0, where, 'picker should not appear with two engines');
     ok(m.h1.endsWith('vLLM?'), where, 'H1 should end with a question mark, got "' + m.h1 + '"');
@@ -154,71 +157,67 @@ async function layoutChecks(browser, base, mode) {
     const vb = await page.evaluate(() => document.querySelector('#q3 figure svg').getAttribute('viewBox'));
     ok(vb === (width < 600 ? '0 0 380 ' : '0 0 760 ') + vb.split(' ')[3], where, 'boundary diagram viewBox is ' + vb);
 
-    // The pinned track is vertical at 1100px and up, a strip per chapter below.
-    const vis = await page.evaluate(() => {
-      const shown = el => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
-      return {
-        aside: shown(document.querySelector('#q1 aside.track svg')),
-        strip: shown(document.querySelector('#q1 .track-strip svg')),
-        strips: document.querySelectorAll('.chapter .track-strip').length,
-      };
-    });
-    ok(vis.strips === 4, where, `expected a strip in each chapter, found ${vis.strips}`);
-    ok(vis.aside === (width >= 1100), where, `vertical track visible=${vis.aside} at ${width}`);
-    ok(vis.strip === (width < 1100), where, `horizontal strip visible=${vis.strip} at ${width}`);
-
     texts[width] = m.text;
-    if (width === 1440 && mode === 'http') await interactionChecks(page, where);
     await page.close();
   }
   return texts;
 }
 
-const activeStage = (page, q) => page.evaluate(id => {
-  const g = document.querySelector('#' + id + ' aside.track [data-active="true"]');
-  return g && g.getAttribute('data-stage');
-}, q);
+// tracers.html: the tracer cards, the stage track and every stage, at each width.
+async function tracersLayoutChecks(browser, base, mode) {
+  const texts = {};
+  for (const width of WIDTHS) {
+    const where = `${mode} tracers ${width}`;
+    const url = mode === 'http' ? base + '/tracers.html' : pathToFileURL(path.join(root, 'tracers.html')).href;
+    const { page, problems } = await openPage(browser, { width, url });
+    const m = await page.evaluate(() => ({
+      sw: document.documentElement.scrollWidth, iw: window.innerWidth,
+      ids: ['deep-dives', 'every-stage', 'stage-track', 'every-stage-rows'].filter(id => !document.getElementById(id)),
+      rows: document.querySelectorAll('.stage-row').length,
+      cards: document.querySelectorAll('.tool').length,
+      track: !!document.querySelector('#stage-track svg [data-stage="think"]'),
+      current: (document.querySelector('.top nav a[aria-current="page"]') || {}).textContent,
+      tiny: [...document.querySelectorAll('#stage-track svg text')].filter(t => t.getClientRects().length > 0)
+        .map(t => ({ text: t.textContent.trim().slice(0, 40), px: parseFloat(getComputedStyle(t).fontSize) * t.getScreenCTM().a }))
+        .filter(x => x.px < 11),
+      text: document.body.innerText,
+    }));
+    ok(m.sw <= m.iw, where, `horizontal overflow (scrollWidth ${m.sw}, window ${m.iw})`);
+    ok(m.ids.length === 0, where, `missing containers: ${m.ids.join(', ')}`);
+    ok(m.rows >= 5, where, `expected 4 stage rows and a General row, found ${m.rows}`);
+    ok(m.cards === 3, where, `expected 3 tracer cards, found ${m.cards}`);
+    ok(m.track, where, 'stage track not drawn');
+    ok(m.current === 'Tracers and code', where, 'nav should mark Tracers and code as the current page, got ' + m.current);
+    ok(m.tiny.length === 0, where, 'stage track text under 11px: ' + m.tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));
+    for (const p of problems) fail(where, p);
+    texts[width] = m.text;
+    if (width === 1440 && mode === 'http') await tracersInteractionChecks(page, base, where);
+    await page.close();
+  }
+  return texts;
+}
 
-async function interactionChecks(page, where) {
-  // Scrolling a chapter into view highlights its stage in that chapter's track.
-  await page.evaluate(() => document.getElementById('q2').scrollIntoView({ behavior: 'instant' }));
-  await page.waitForFunction(() => {
-    const g = document.querySelector('#q2 aside.track [data-active="true"]');
-    return g && g.getAttribute('data-stage') === 'think';
-  }, { timeout: 3000 }).catch(() => {});
-  ok(await activeStage(page, 'q2') === 'think', where, `q2 track active stage is ${await activeStage(page, 'q2')}, expected think`);
-  await page.evaluate(() => document.getElementById('q1').scrollIntoView({ behavior: 'instant' }));
-  await page.waitForFunction(() => {
-    const g = document.querySelector('#q1 aside.track [data-active="true"]');
-    return g && g.getAttribute('data-stage') === 'wait';
-  }, { timeout: 3000 }).catch(() => {});
-  ok(await activeStage(page, 'q1') === 'wait', where, `q1 track active stage is ${await activeStage(page, 'q1')}, expected wait`);
+const stageInView = (page, id) => page.evaluate(sid => {
+  const row = document.getElementById('stage-' + sid);
+  const r = row.getBoundingClientRect();
+  return { open: row.querySelector('details').open, top: r.top, h: window.innerHeight };
+}, id);
 
-  // Q3 spans two stages: scrolling to the second one moves the highlight.
-  const second = await page.evaluate(() => {
-    const h = document.querySelectorAll('#q3 .stage-h');
-    if (h.length < 2) return false;
-    window.scrollTo({ top: h[1].getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.4, behavior: 'instant' });
-    return true;
-  });
-  ok(second, where, 'q3 should have two stage headings');
-  await page.waitForFunction(() => {
-    const g = document.querySelector('#q3 aside.track [data-active="true"]');
-    return g && g.getAttribute('data-stage') === 'speak';
-  }, { timeout: 3000 }).catch(() => {});
-  ok(await activeStage(page, 'q3') === 'speak', where, `q3 track active stage is ${await activeStage(page, 'q3')}, expected speak`);
-
-  // Clicking a stage in the track opens that stage in Every stage.
-  await page.evaluate(() => document.getElementById('q1').scrollIntoView({ behavior: 'instant' }));
-  await page.evaluate(() => document.querySelector('#q1 aside.track [data-stage="think"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+async function tracersInteractionChecks(page, base, where) {
+  // Clicking a stage in the track opens that stage's code path and scrolls to it.
+  await page.evaluate(() => document.querySelector('#stage-track [data-stage="think"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
   await page.waitForFunction(() => { const t = document.getElementById('stage-think').getBoundingClientRect().top; return t >= -4 && t < window.innerHeight / 2; }, { timeout: 4000 }).catch(() => {});
-  const clicked = await page.evaluate(() => {
-    const row = document.getElementById('stage-think');
-    const r = row.getBoundingClientRect();
-    return { open: row.querySelector('details').open, top: r.top, h: window.innerHeight };
-  });
+  const clicked = await stageInView(page, 'think');
   ok(clicked.open, where, 'track click should open the stage details');
   ok(clicked.top >= -4 && clicked.top < clicked.h / 2, where, `stage row not scrolled into view (top ${clicked.top})`);
+  await srcTipChecks(page, where);
+
+  // A chapter's code link (tracers.html#stage-wait) lands on that stage, opened.
+  await page.goto(base + '/tracers.html#stage-wait', { waitUntil: 'load' });
+  await page.waitForFunction(() => { const t = document.getElementById('stage-wait').getBoundingClientRect().top; return t >= -4 && t < window.innerHeight / 2; }, { timeout: 4000 }).catch(() => {});
+  const linked = await stageInView(page, 'wait');
+  ok(linked.open, where, '#stage-wait should open the Wait code path');
+  ok(linked.top >= -4 && linked.top < linked.h / 2, where, `#stage-wait not scrolled into view (top ${linked.top})`);
 }
 
 // With bench results and pair annotations present, every chart draws and its text
@@ -253,18 +252,29 @@ async function chartChecks(browser, base) {
   const where = 'http reversed pair with verdict';
   const grab = async (query) => {
     const { page } = await openPage(browser, { width: 1440, url: base + '/index.html' + query, bench: true });
-    const out = await page.evaluate(() => document.getElementById('verdict').innerHTML + document.getElementById('chapters').innerHTML);
+    // Links to tracers.html carry the URL's pair, so the query is left out of the comparison.
+    const out = await page.evaluate(() => (document.getElementById('verdict').innerHTML + document.getElementById('chapters').innerHTML).replace(/\?a=[^"#]*/g, ''));
     await page.close();
     return out;
   };
   ok(await grab('?a=llama-cpp&b=vllm') === await grab('?a=vllm&b=llama-cpp'), where, 'verdict or annotations flip when the URL pair is reversed');
 }
 
-// Tooltips: a chart point and a source link each show their detail on keyboard
-// focus (a keyboard Tab, so :focus-visible applies) and on mouse hover, and the
-// native title is dropped so only one tooltip shows.
+// Tooltips: a chart point (index.html) and a source link (tracers.html) each show
+// their detail on keyboard focus (a keyboard Tab, so :focus-visible applies), the
+// chart point also on mouse hover, and the native title is dropped so only one shows.
+const tipText = page => page.evaluate(() => { const t = document.getElementById('tip'); return t && !t.hidden && t.getClientRects().length ? t.textContent : ''; });
+
+async function srcTipChecks(page, where) {
+  const tip = () => tipText(page);
+  const src = await page.evaluate(() => { const d = document.querySelector('#every-stage details'); d.open = true; const a = d.querySelector('.src'); a.scrollIntoView({ behavior: 'instant', block: 'center' }); const prev = [...document.querySelectorAll('a[href], summary')]; const i = prev.indexOf(a); prev[i - 1].focus(); return a.getAttribute('data-tip'); });
+  await page.keyboard.press('Tab');
+  ok(await tip() === src && src, where, 'source link tooltip not shown on keyboard focus: "' + await tip() + '" vs "' + src + '"');
+  await page.evaluate(() => document.activeElement.blur());
+}
+
 async function tooltipChecks(page, where) {
-  const tip = () => page.evaluate(() => { const t = document.getElementById('tip'); return t && !t.hidden && t.getClientRects().length ? t.textContent : ''; });
+  const tip = () => tipText(page);
   await page.evaluate(() => { document.getElementById('q1').scrollIntoView({ behavior: 'instant' }); });
   // Focus the control just before the first chart point, then Tab onto the point.
   await page.evaluate(() => { const c = document.querySelector('#q1 figure circle[data-tip]'); c.focus(); c.blur(); });
@@ -276,13 +286,6 @@ async function tooltipChecks(page, where) {
   ok(await tip() === '', where, 'Escape should hide the tooltip');
   await page.evaluate(() => document.activeElement.blur());
   ok(await tip() === '', where, 'tooltip should hide when focus leaves');
-
-  // A source link: focus it with the keyboard.
-  await page.evaluate(() => { const a = document.querySelector('#every-stage .src'); a.scrollIntoView({ behavior: 'instant', block: 'center' }); });
-  const src = await page.evaluate(() => { const d = document.querySelector('#every-stage details'); d.open = true; const a = d.querySelector('.src'); a.scrollIntoView({ behavior: 'instant', block: 'center' }); const prev = [...document.querySelectorAll('a[href], summary')]; const i = prev.indexOf(a); prev[i - 1].focus(); return a.getAttribute('data-tip'); });
-  await page.keyboard.press('Tab');
-  ok(await tip() === src && src, where, 'source link tooltip not shown on keyboard focus: "' + await tip() + '" vs "' + src + '"');
-  await page.evaluate(() => document.activeElement.blur());
 
   // Mouse hover on a chart point shows the same text, and the title is gone.
   const pt = await page.evaluate(() => { const c = document.querySelector('#q1 figure circle[data-tip]'); c.scrollIntoView({ behavior: 'instant', block: 'center' }); const r = c.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return { x: x, y: y, tip: top && top.getAttribute('data-tip') }; });
@@ -302,16 +305,22 @@ async function canReachFonts() {
 }
 
 async function realFontChecks(browser, base) {
-  const where = 'http 390 real fonts';
   if (!await canReachFonts()) { console.log('NOTE: Google Fonts is not reachable; skipping the real-font 390px check.'); return; }
-  const { page, problems } = await openPage(browser, { width: 390, url: base + '/index.html', realFonts: true });
+  for (const [file, rootsSel] of [['index.html', '.hero, .chapter, .which, #method'], ['tracers.html', '#deep-dives, #every-stage']]) {
+    await realFontPage(browser, base, file, rootsSel);
+  }
+}
+
+async function realFontPage(browser, base, file, rootsSel) {
+  const where = 'http 390 real fonts ' + file;
+  const { page, problems } = await openPage(browser, { width: 390, url: base + '/' + file, realFonts: true });
   await page.evaluate(() => document.fonts.ready);
   const loaded = await page.evaluate(() => [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Archivo' && f.status === 'loaded'));
   if (!loaded) { console.log('NOTE: the Archivo web font did not load (no FontFace with status loaded); skipping the real-font 390px check.'); await page.close(); return; }
-  await page.evaluate(() => document.querySelectorAll('#chapters details, #every-stage details').forEach(d => { d.open = true; }));
-  const m = await page.evaluate(() => {
+  await page.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; }));
+  const m = await page.evaluate(sel => {
     const out = [];
-    const roots = [...document.querySelectorAll('.chapter, #every-stage, #method')];
+    const roots = [...document.querySelectorAll(sel)];
     roots.forEach(root => root.querySelectorAll('*').forEach(el => {
       if (el.closest('svg') && el.tagName.toLowerCase() !== 'svg') return;
       if (el.closest('.sr-only') || !el.getClientRects().length) return;
@@ -321,7 +330,7 @@ async function realFontChecks(browser, base) {
       if (r.right > p.right + 1 || r.left < p.left - 1) out.push(el.tagName.toLowerCase() + '.' + (el.getAttribute('class') || '') + ' in ' + parent.tagName.toLowerCase() + '.' + (parent.getAttribute('class') || '') + ' (' + Math.round(r.right) + ' > ' + Math.round(p.right) + ')');
     }));
     return { sw: document.documentElement.scrollWidth, out: out.slice(0, 6), n: out.length };
-  });
+  }, rootsSel);
   ok(m.sw <= 390, where, 'horizontal overflow with real fonts: scrollWidth ' + m.sw);
   ok(m.n === 0, where, m.n + ' element(s) overflow their container: ' + m.out.join('; '));
   for (const p of problems) fail(where, p);
@@ -337,11 +346,15 @@ async function reversedPairChecks(browser, base) {
     const out = await page.evaluate(() => ({
       h1: document.querySelector('.hero h1').textContent,
       verdict: document.getElementById('verdict').innerHTML,
-      chapters: document.getElementById('chapters').innerHTML,
-      rows: document.getElementById('every-stage-rows').innerHTML,
+      chapters: document.getElementById('chapters').innerHTML.replace(/\?a=[^"#]*/g, ''),
     }));
     for (const p of problems) fail(where, p);
     await page.close();
+    const second = await openPage(browser, { width: 1440, url: base + '/tracers.html' + query });
+    out.rows = await second.page.evaluate(() => document.getElementById('every-stage-rows').innerHTML);
+    out.track = await second.page.evaluate(() => document.getElementById('stage-track').innerHTML);
+    for (const p of second.problems) fail(where, p);
+    await second.page.close();
     return out;
   };
   const normal = await grab('?a=llama-cpp&b=vllm');
@@ -350,18 +363,16 @@ async function reversedPairChecks(browser, base) {
   ok(reversed.h1.indexOf('llama.cpp') >= 0 && reversed.h1.indexOf('llama.cpp') < reversed.h1.indexOf('vLLM'), where, 'H1 should keep the pair file order, got ' + reversed.h1);
 }
 
-// Crossing the 600px line redraws the boundary diagram at the other width, and
-// keeps a code path the reader had opened.
+// Crossing the 600px line redraws the boundary diagram and the hero chart at the other width.
 async function resizeChecks(browser, base) {
   const where = 'http resize';
   const { page, problems } = await openPage(browser, { width: 1440, url: base + '/index.html' });
   const vb = () => page.evaluate(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2]);
   ok(await vb() === '760', where, 'wide viewBox should be 760');
-  await page.evaluate(() => { document.querySelector('#q3 .path details').open = true; });
   await page.setViewport({ width: 390, height: 900, deviceScaleFactor: 1 });
   await page.waitForFunction(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2] === '380', { timeout: 3000 }).catch(() => {});
   ok(await vb() === '380', where, 'narrow viewBox should be 380 after resizing to 390');
-  ok(await page.evaluate(() => document.querySelector('#q3 .path details').open), where, 'an opened code path should stay open');
+  ok(await page.evaluate(() => document.querySelector('#hero-chart svg').getAttribute('viewBox').split(' ')[2]) === '380', where, 'hero chart should redraw at 380');
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
   await page.waitForFunction(() => document.querySelector('#q3 figure svg').getAttribute('viewBox').split(' ')[2] === '760', { timeout: 3000 }).catch(() => {});
   ok(await vb() === '760', where, 'wide viewBox should return to 760');
@@ -381,9 +392,18 @@ async function fakeEngineChecks(browser, base) {
   }));
   ok(m.selects.length === 2 && m.selects.every(n => n === 3), where, `picker should have two selects of 3 options, got ${JSON.stringify(m.selects)}`);
   ok(/No write-up for this pair yet/.test(m.text), where, 'missing "No write-up for this pair yet"');
-  ok(/Not covered yet/.test(m.text), where, 'missing "Not covered yet"');
   ok(/ollama/i.test(m.h1), where, `H1 should name the picked engine, got "${m.h1}"`);
   ok(m.chapters === 4 && m.sw <= m.iw, where, 'layout broke with a third engine');
+  ok(await page.evaluate(() => document.querySelector('.chapter .links a[href^="tracers.html"]').getAttribute('href').startsWith('tracers.html?a=ollama&b=vllm#')),
+    where, 'links to the tracers page should keep the picked pair');
+
+  // The tracers page shows the same pair, with the gaps marked.
+  const second = await openPage(browser, { width: 1440, url: base + '/tracers.html?a=ollama&b=vllm', fake: true });
+  const t = await second.page.evaluate(() => ({ text: document.body.innerText, selects: document.querySelectorAll('#picker select').length, sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+  ok(/Not covered yet/.test(t.text), where + ' tracers', 'missing "Not covered yet"');
+  ok(/Ollama/.test(t.text) && t.selects === 2 && t.sw <= t.iw, where + ' tracers', 'tracers page should show the picked engine and the picker without overflow');
+  for (const p of second.problems) fail(where + ' tracers', p);
+  await second.page.close();
 
   // Changing a select re-renders and updates the URL.
   await page.select('#picker select:first-of-type', 'llama-cpp');
@@ -402,6 +422,9 @@ try {
   const http_ = await layoutChecks(browser, base, 'http');
   const file_ = await layoutChecks(browser, base, 'file');
   for (const w of WIDTHS) ok(http_[w] === file_[w], `width ${w}`, 'body text differs between http and file://');
+  const httpT = await tracersLayoutChecks(browser, base, 'http');
+  const fileT = await tracersLayoutChecks(browser, base, 'file');
+  for (const w of WIDTHS) ok(httpT[w] === fileT[w], `tracers width ${w}`, 'body text differs between http and file://');
   await fakeEngineChecks(browser, base);
   await reversedPairChecks(browser, base);
   await chartChecks(browser, base);

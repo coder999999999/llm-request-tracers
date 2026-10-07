@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tracers and code, One Request, Traced</title>
+<meta name="description" content="Interactive tracers of llama.cpp and vLLM, and every stage of one chat request side by side with its code path.">
+<meta property="og:title" content="Tracers and code">
+<meta property="og:description" content="Interactive tracers of llama.cpp and vLLM, and every stage of one chat request side by side with its code path.">
+<meta property="og:image" content="assets/close-llama-cpp.webp">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/compare/site.css?v=bff2d9b0">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="index.html">One Request, Traced</a>
+    <div class="top-r">
+      <div id="picker"></div>
+      <nav aria-label="Pages"><a href="index.html">Compare</a><a href="tracers.html" aria-current="page">Tracers and code</a><a href="index.html#method">Method</a></nav>
+    </div>
+  </header>
+  <div class="page-head">
+    <h1>Tracers and code</h1>
+    <p>How each engine handles one chat request: an interactive map of each codebase, then all four stages side by side, each with its code path and features.</p>
+  </div>
+</div>
+
+<section class="wrap" id="deep-dives" aria-labelledby="h-tools">
+  <div class="sec">
+    <h2 id="h-tools">The tracers</h2>
+    <p class="lede">Interactive maps of the real code. Press Trace and the request walks itself, one function at a time, each linked to its source line.</p>
+    <div class="tools">
+      <a class="tool" href="llama-cpp.html">
+        <img src="assets/close-llama-cpp.webp" width="960" height="600" alt="Close-up of the llama.cpp tracer on step 13, Pick a slot, with the step card explaining it" loading="lazy">
+        <h3>llama.cpp tracer</h3>
+        <p>C++, 53 steps. One process, one inference thread. Watch the request get a slot, run through ggml on the GPU and stream back.</p>
+        <span class="go">Open the tracer</span>
+      </a>
+      <a class="tool" href="vllm.html">
+        <img src="assets/close-vllm.webp" width="960" height="600" alt="Close-up of the vLLM tracer on step 18, Schedule, next to Admit waiting request" loading="lazy">
+        <h3>vLLM tracer</h3>
+        <p>Python, 59 steps. Two processes over ZMQ, a token-budget scheduler and a paged KV cache.</p>
+        <span class="go">Open the tracer</span>
+      </a>
+      <a class="tool" href="vllm-module-graph.html">
+        <img src="assets/close-vllm-module-graph.webp" width="960" height="600" alt="Close-up of the vLLM module graph on step 4, ZMQ hand-off to the engine core" loading="lazy">
+        <h3>vLLM module map</h3>
+        <p>Zoomed out, 18 steps. The same trip drawn across vLLM's 164 modules.</p>
+        <span class="go">Open the map</span>
+      </a>
+    </div>
+    <p class="how">Step with the arrow keys, click any box for details. Best on a laptop or bigger.</p>
+  </div>
+</section>
+
+<section class="wrap" id="every-stage" aria-labelledby="h-every">
+  <div class="sec">
+    <h2 id="h-every">Every stage</h2>
+    <p class="lede">Each engine's steps, time and features for every stage. Pick a stage below, or open a row, to see its code path.</p>
+    <div class="stage-track" id="stage-track"></div>
+    <div id="every-stage-rows"><noscript><p class="empty">The stages are drawn by a script. Enable JavaScript to read them, or open either tracer above.</p></noscript></div>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <p>Each repo was read at the pinned commit listed under Method with Claude, and every code step links to its source line. Simplified, and probably wrong in places. Corrections welcome as issues.</p>
+    <p>Learning notes, not affiliated with <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a>.</p>
+  </footer>
+</div>
+
+<script src="data/registry.js?v=a869b3c9"></script>
+<script src="data/compare.js?v=84254d64"></script>
+<script src="data/engines/llama-cpp.steps.js?v=446346f4"></script>
+<script src="data/engines/llama-cpp.js?v=cc4d444c"></script>
+<script src="data/engines/vllm.steps.js?v=0a7f42ef"></script>
+<script src="data/engines/vllm.js?v=6853d3db"></script>
+<script src="data/pairs/llama-cpp--vllm.js?v=45c2de95"></script>
+<script src="data/bench/llama-cpp.js?v=e9523e92" onerror="this.remove()"></script>
+<script src="data/bench/vllm.js?v=ae74fd5a" onerror="this.remove()"></script>
+<script src="assets/compare/util.js?v=516e7587"></script>
+<script src="assets/compare/stage-times.js?v=c1a5132d"></script>
+<script src="assets/compare/chart.js?v=0c494bd7"></script>
+<script src="assets/compare/render.js?v=82700338"></script>
+<script src="assets/compare/page.js?v=baa1a536"></script>
+</body>
+</html>

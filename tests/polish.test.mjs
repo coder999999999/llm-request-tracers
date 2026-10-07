@@ -75,7 +75,7 @@ function cardText(index, href) {
 }
 
 test('tracer cards state the real step counts', () => {
-  const index = read('index.html');
+  const index = read('tracers.html');
   assert.match(cardText(index, 'llama-cpp.html'), new RegExp('\\b' + tracerTotal('llama-cpp.html') + ' steps'));
   assert.match(cardText(index, 'vllm.html'), new RegExp('\\b' + tracerTotal('vllm.html') + ' steps'));
   assert.match(cardText(index, 'vllm-module-graph.html'), new RegExp('\\b' + moduleMapSteps() + ' steps'));
@@ -83,7 +83,7 @@ test('tracer cards state the real step counts', () => {
 
 test('module map card states the real module count', () => {
   const data = JSON.parse(/<script type="application\/json" id="data">(.*?)<\/script>/s.exec(read('vllm-module-graph.html'))[1]);
-  assert.match(cardText(read('index.html'), 'vllm-module-graph.html'), new RegExp('\\b' + data.nodes.length + ' modules'));
+  assert.match(cardText(read('tracers.html'), 'vllm-module-graph.html'), new RegExp('\\b' + data.nodes.length + ' modules'));
 });
 
 test('source-linked step data fits inside the tracer totals', () => {

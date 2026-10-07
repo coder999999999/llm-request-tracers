@@ -150,16 +150,20 @@ test('featureRows(null) renders the stage-less catalogue keys', () => {
 test('no pair file shows the no-write-up line', () =>
   assert.match(RTR.chapter(q1, 0, { ...ctx, pair: null }), /No write-up for this pair yet/));
 
-test('chapter shows the answer, counter, tracer links and next question', () => {
+test('chapter shows the answer, counter, code link and next question', () => {
   const html = RTR.chapter(q2, 1, ctx);
   assert.match(html, /id="q2"/);
   assert.match(html, />2 of 4</);
   assert.match(html, /Answer two\./);
-  assert.match(html, />Open the llama\.cpp tracer</);
-  assert.match(html, />Open the vLLM tracer</);
-  assert.match(html, /href="llama-cpp\.html"/);
+  assert.match(html, /<a href="tracers\.html#stage-think">The Think code in both engines<\/a>/);
   assert.match(html, /<a href="#q3">Next question<\/a>/);
   assert.match(html, /<h2>Who reuses your prompt better\?<\/h2>/);
+});
+
+test('chapter leaves code paths and features to the tracers page, one link per stage', () => {
+  const html = RTR.chapter(q3, 2, ctx);
+  assert.doesNotMatch(html, /class="(paths|path|step|facts)"|<aside/);
+  assert.deepEqual([...html.matchAll(/href="tracers\.html#stage-(\w+)"/g)].map(m => m[1]), q3.stages);
 });
 
 test('an unset answer in an existing pair renders no answer paragraph', () => {

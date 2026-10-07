@@ -1,10 +1,10 @@
 // The only file that touches the DOM. It reads the registered data, asks RTR for
-// HTML strings, fills the containers in index.html, and wires up the pinned
-// track and the engine picker.
+// HTML strings and fills whichever containers the page has: the hero, chapters
+// and method on index.html, the stage track and every stage on tracers.html. It
+// also wires up the stage track and the engine picker.
 (function () {
   var RT = window.RT, RTU = window.RTU, RTR = window.RTR;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var observer = null;
 
   function $(id) { return document.getElementById(id); }
   function hex(c, fallback) { return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? String(c) : fallback; }
@@ -27,57 +27,26 @@
     return { a: a, b: b, pair: pair, compare: RT.compare, bench: RT.bench, narrow: isNarrow() };
   }
 
-  // ---- track ------------------------------------------------------------
+  // ---- stage track (tracers.html) ---------------------------------------
 
-  function setActive(chapter, stageId) {
-    var groups = chapter.querySelectorAll('[data-stage]');
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].getAttribute('data-stage') === stageId) groups[i].setAttribute('data-active', 'true');
-      else groups[i].removeAttribute('data-active');
-    }
-  }
-
-  // Each chapter highlights the stage whose heading was last scrolled past the
-  // upper part of the screen. Queries stay inside the chapter: every chapter has
-  // its own track, so the same data-stage ids repeat down the page.
-  function watchChapters(ctx) {
-    if (observer) observer.disconnect();
-    observer = null;
-    if (!('IntersectionObserver' in window)) return;
-    var questions = ctx.compare.questions;
-    var chapters = document.querySelectorAll('#chapters .chapter');
-    observer = new IntersectionObserver(function (entries) {
-      var seen = [];
-      entries.forEach(function (en) {
-        var chapter = en.target.closest('.chapter');
-        if (chapter && seen.indexOf(chapter) < 0) seen.push(chapter);
-      });
-      seen.forEach(function (chapter) {
-        var q = chapter.__question;
-        var heads = chapter.querySelectorAll('.stage-h');
-        var line = window.innerHeight * 0.45;
-        var active = q.stages[0];
-        for (var i = 0; i < heads.length && i < q.stages.length; i++) {
-          if (heads[i].getBoundingClientRect().top < line) active = q.stages[i];
-        }
-        setActive(chapter, active);
-      });
-    }, { rootMargin: '0px 0px -55% 0px' });
-    chapters.forEach(function (chapter, i) {
-      chapter.__question = questions[i];
-      if (questions[i].stages.length < 2) return;
-      chapter.querySelectorAll('.stage-h').forEach(function (h) { observer.observe(h); });
-    });
-  }
-
-  function goToStage(stageId) {
+  // Opens a stage row's code path and scrolls to it. Used by the stage track and
+  // by links from the comparison page (tracers.html#stage-think).
+  function goToStage(stageId, instant) {
     var row = $('stage-' + stageId);
     if (!row) return;
     var details = row.querySelector('details');
     if (details) details.open = true;
     row.setAttribute('tabindex', '-1');
-    row.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    // 'auto' would follow the stylesheet's smooth scrolling; arriving from a link jumps.
+    row.scrollIntoView({ behavior: reduced || instant ? 'instant' : 'smooth', block: 'start' });
     try { row.focus({ preventScroll: true }); } catch (e) { row.focus(); }
+  }
+
+  // The stage rows are drawn after load, so the browser's own jump to #stage-x
+  // finds nothing; this repeats it once the rows exist, and on later hash changes.
+  function followHash(instant) {
+    var m = /^#stage-([\w-]+)$/.exec(location.hash);
+    if (m) goToStage(m[1], instant);
   }
 
   function wireTrack(host) {
@@ -97,33 +66,20 @@
   // ---- sections ---------------------------------------------------------
 
   function renderChapters(ctx) {
-    var host = $('chapters');
-    // A re-render on resize keeps whichever code paths the reader had opened.
-    var open = [].map.call(host.querySelectorAll('details'), function (d) { return d.open; });
-    host.innerHTML = ctx.compare.questions.map(function (q, i) { return RTR.chapter(q, i, ctx); }).join('');
-    // Below 1100px the vertical track is hidden; each chapter gets a strip instead.
-    host.querySelectorAll('.chapter').forEach(function (chapter, i) {
-      var q = ctx.compare.questions[i];
-      var strip = '<div class="track-strip">' + RTR.track(ctx, q.stages[0], { horizontal: true }) + '</div>';
-      chapter.firstElementChild.insertAdjacentHTML('afterbegin', strip);
-    });
-    host.querySelectorAll('details').forEach(function (d, i) { if (open[i]) d.open = true; });
-    watchChapters(ctx);
+    $('chapters').innerHTML = ctx.compare.questions.map(function (q, i) { return RTR.chapter(q, i, ctx); }).join('');
   }
 
   function renderHero(ctx) {
-    var root = document.documentElement.style;
-    root.setProperty('--a', hex(ctx.a.color, '#d9662a'));
-    root.setProperty('--b', hex(ctx.b.color, '#2b54d0'));
     var h1 = document.querySelector('.hero h1');
     h1.querySelector('.a').textContent = ctx.a.name;
     h1.querySelector('.b').textContent = ctx.b.name;
     // The verdict comes from the pair file. Until it is written, nothing is shown.
     var html = RTR.verdict(ctx);
     var host = $('verdict');
-    host.className = html ? 'verdict' : '';
-    host.innerHTML = html;
-    // Optional hero parts: each fills only if the page has its container.
+    if (host) {
+      host.className = html ? 'verdict' : '';
+      host.innerHTML = html;
+    }
     var head = $('headline');
     if (head) head.innerHTML = RTR.headline(ctx);
     var chart = $('hero-chart');
@@ -181,18 +137,32 @@
 
   // ---- render -----------------------------------------------------------
 
+  // Links between the two pages keep the engine pair the reader picked (?a=..&b=..).
+  function carryPair() {
+    document.querySelectorAll('a[href^="index.html"], a[href^="tracers.html"]').forEach(function (a) {
+      var m = /^([\w.-]+\.html)(?:\?[^#]*)?(#.*)?$/.exec(a.getAttribute('href'));
+      if (m) a.setAttribute('href', m[1] + location.search + (m[2] || ''));
+    });
+  }
+
   function render() {
     var ctx = currentPair();
     if (!ctx) return;
-    renderHero(ctx);
-    renderPicker(ctx);
-    renderChapters(ctx);
-    $('every-stage-rows').innerHTML = RTR.everyStage(ctx);
-    renderMethod();
+    var root = document.documentElement.style;
+    root.setProperty('--a', hex(ctx.a.color, '#d9662a'));
+    root.setProperty('--b', hex(ctx.b.color, '#2b54d0'));
+    if (document.querySelector('.hero h1 .a')) renderHero(ctx);
+    if ($('picker')) renderPicker(ctx);
+    if ($('chapters')) renderChapters(ctx);
+    if ($('stage-track')) $('stage-track').innerHTML = RTR.track(ctx, null, { horizontal: true });
+    if ($('every-stage-rows')) $('every-stage-rows').innerHTML = RTR.everyStage(ctx);
+    if ($('method-versions')) renderMethod();
+    carryPair();
   }
 
-  // Redraws the chapters when the column crosses the phone threshold (not on every resize).
+  // Redraws the charts when the column crosses the phone threshold (not on every resize).
   function wireResize() {
+    if (!$('chapters')) return;
     var narrow = isNarrow(), timer = null;
     window.addEventListener('resize', function () {
       clearTimeout(timer);
@@ -205,6 +175,7 @@
         renderChapters(ctx);
         var chart = $('hero-chart');
         if (chart) chart.innerHTML = RTR.heroChart(ctx);
+        carryPair();
       }, 150);
     });
   }
@@ -250,9 +221,11 @@
   }
 
   if (RT.errors && RT.errors.length && window.console) console.warn('Data problems:', RT.errors);
-  wireTrack($('chapters'));
-  wirePicker();
+  if ($('stage-track')) wireTrack($('stage-track'));
+  if ($('picker')) wirePicker();
   wireTips();
   wireResize();
   render();
+  followHash(true);
+  window.addEventListener('hashchange', function () { followHash(false); });
 })();

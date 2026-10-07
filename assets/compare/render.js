@@ -1,4 +1,5 @@
-// Section renderers for the comparison page. Pure functions: data in, HTML or
+// Section renderers for the comparison page (index.html) and the tracers page
+// (tracers.html, every stage's code path). Pure functions: data in, HTML or
 // SVG string out. Nothing here touches the DOM; page.js inserts the strings.
 //
 // ctx = {a, b, pair, compare, bench}
@@ -14,6 +15,8 @@
   var RTR = window.RTR = window.RTR || {};
 
   var EMPTY = 'Benchmark running, results soon';
+  // The page with the tracers and every stage's code path; chapters link to its stage rows.
+  var CODE_PAGE = 'tracers.html';
   var NOT_COVERED = 'Not covered yet';
   var NO_PAIR = 'No write-up for this pair yet';
   var INK = '#121212', INK2 = '#4b4b48', INK3 = '#4b4b48', RULE = '#e2dfd6', BG = '#f7f6f2';
@@ -466,17 +469,13 @@
     html += RTR.evidence(q, ctx);
     var barStage = stageIds.filter(function (id) { return STAGE_BAR[id]; })[0];
     if (barStage) html += RTR.stageBar(barStage, ctx);
-    stageIds.forEach(function (id) {
+    // The code paths and feature tables live on the tracers page; each stage links there.
+    html += '<div class="links">' + stageIds.map(function (id) {
       var st = stageById(ctx, id);
-      html += '<div class="fig-h stage-h"><h3>' + esc(st ? st.name : id) + '</h3>' + (st && st.subtitle ? '<p>' + esc(st.subtitle) + '</p>' : '') + '</div>';
-      html += paths(id, ctx) + RTR.featureRows(id, ctx);
-    });
-    html += '<div class="links">' +
-      pair(ctx).map(function (e) { return '<a href="' + esc(e.tracer) + '">Open the ' + esc(e.name) + ' tracer</a>'; }).join('');
+      return '<a href="' + CODE_PAGE + '#stage-' + esc(id) + '">The ' + esc(st ? st.name : id) + ' code in both engines</a>';
+    }).join('');
     if (index < qs.length - 1) html += '<a href="#' + esc(qs[index + 1].id) + '">Next question</a>';
-    html += '</div></div>';
-    html += '<aside class="track">' + RTR.track(ctx, stageIds[0]) + '</aside></article>';
-    return html;
+    return html + '</div></div></article>';
   };
 
   RTR.stageRow = function (stageId, ctx) {

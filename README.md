@@ -6,7 +6,8 @@ Step-through maps of one streaming `POST /v1/chat/completions` request through t
 
 | Page | What it shows | Pinned to |
 | --- | --- | --- |
-| [`index.html`](index.html) | Comparison of llama.cpp and vLLM: questions, code paths, features, benchmarks | |
+| [`index.html`](index.html) | Comparison of llama.cpp and vLLM: four questions answered with benchmarks, and which to pick | |
+| [`tracers.html`](tracers.html) | The three tracers, and every stage of the request side by side: code paths, time per stage, features | |
 | [`llama-cpp.html`](llama-cpp.html) | **llama.cpp tracer.** 53 steps through `llama-server`: HTTP, slot scheduler, decode, ggml graph, sampling, SSE | [`ggml-org/llama.cpp@2ca15f5`](https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a) |
 | [`vllm.html`](vllm.html) | **vLLM tracer.** 59 steps through `vllm serve`: API process, ZMQ, scheduler and paged KV cache, forward pass, sampling, detokenize, SSE | [`vllm-project/vllm@1388100`](https://github.com/vllm-project/vllm/tree/138810056093301f4881050fcf2b1786939da387) |
 | [`vllm-module-graph.html`](vllm-module-graph.html) | **vLLM module graph.** Import graph of 164 modules with an 18-step trace | `vllm-project/vllm@7867d6c` |
@@ -16,7 +17,7 @@ Each page is a single self-contained HTML file. No build step.
 
 ## Viewing
 
-Open `index.html` in a browser. Press **Trace** or use the arrow keys to step; click a box for details and source links. Best on a desktop screen.
+Open `index.html` in a browser for the comparison, or `tracers.html` for the tracers and the code. In a tracer, press **Trace** or use the arrow keys to step; click a box for details and source links. Best on a desktop screen.
 
 ## Data files
 

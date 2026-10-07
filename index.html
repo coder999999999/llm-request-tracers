@@ -7,7 +7,7 @@
 <meta name="description" content="The same chat request, sent to llama.cpp and vLLM on one RTX 4090. Followed through their source, and timed.">
 <meta property="og:title" content="llama.cpp or vLLM">
 <meta property="og:description" content="The same chat request, sent to llama.cpp and vLLM on one RTX 4090. Followed through their source, and timed.">
-<meta property="og:image" content="assets/preview-llama-cpp-video.webp">
+<meta property="og:image" content="assets/close-llama-cpp.webp">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,8 +63,6 @@ table.sr-only{left:-10000px}
 .headline:empty{display:none}
 @media (max-width:600px){.headline{font-size:var(--fs-xl)}}
 .dek{margin:16px 0 0;font-size:var(--fs-l);line-height:1.5;color:var(--ink2);max-width:36em}
-.dek a{font-weight:600;color:var(--ink);text-decoration-thickness:1px;text-underline-offset:4px;white-space:nowrap}
-.dek a:hover{text-decoration-thickness:2px}
 .hero-chart{max-width:760px;margin-top:48px}
 .hero-chart:empty{display:none}
 .verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:24px}
@@ -192,27 +190,6 @@ aside.track svg{display:block;width:100%}
 .tool .go{display:block;margin-top:12px;font-size:var(--fs-s);font-weight:600;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
 .how{max-width:32em;margin:32px 0 0;font-size:var(--fs-s);color:var(--ink2)}
 
-/* films */
-.films{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:64px;align-items:start}
-@media (max-width:900px){.films{grid-template-columns:minmax(0,1fr);gap:32px}}
-.reel button{all:unset;display:block;position:relative;cursor:pointer;width:100%}
-.reel button:focus-visible{outline:2px solid var(--ink);outline-offset:4px}
-.reel img{width:100%;aspect-ratio:16/9;object-fit:cover}
-.reel .play{position:absolute;left:16px;bottom:16px;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--bg);transition:transform .2s}
-.reel button:hover .play{transform:scale(1.12)}
-@media (prefers-reduced-motion:reduce){.reel .play{transition:none}.reel button:hover .play{transform:none}}
-.eps{list-style:none;margin:0;padding:0;border-top:2px solid var(--rule2)}
-.ep{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px 16px;padding:16px 0;border-bottom:1px solid var(--rule)}
-.ep .n{color:var(--ink2);font-weight:500;font-variant-numeric:tabular-nums}
-.ep h3{font:600 var(--fs-l)/1.35 var(--sans)}
-.ep p{max-width:32em;margin:4px 0 0;font-size:var(--fs-base);color:var(--ink2)}
-.ep .meta{font-size:var(--fs-s);color:var(--ink2)}
-.ep .st{font-size:var(--fs-s);color:var(--ink2);white-space:nowrap;text-align:right}
-.ep.now .st a{color:var(--ink);font-weight:600;text-underline-offset:4px}
-@media (max-width:600px){.ep{grid-template-columns:32px minmax(0,1fr)}.ep .st{grid-column:2;text-align:left}}
-.next-series{max-width:32em;margin:32px 0 0;font-size:var(--fs-base);color:var(--ink2)}
-.next-series b{font-weight:600;color:var(--ink)}
-
 /* method */
 .spec{margin:0;border-top:2px solid var(--rule2)}
 .spec>div{display:grid;grid-template-columns:150px minmax(0,1fr);gap:32px;padding:16px 0;border-bottom:1px solid var(--rule)}
@@ -231,15 +208,6 @@ footer p{margin:0;max-width:32em}
 .tip{position:fixed;z-index:10;max-width:min(24em,calc(100vw - 32px));padding:8px 12px;background:var(--ink);color:var(--bg);font:500 var(--fs-s)/1.4 var(--sans);border-radius:2px;pointer-events:none;overflow-wrap:anywhere}
 .tip[hidden]{display:none}
 
-/* player */
-dialog{padding:0;border:0;background:transparent;max-width:min(1100px,94vw);width:100%}
-dialog::backdrop{background:rgba(12,10,6,.82)}
-.player{display:grid;gap:12px}
-.player video{display:block;width:100%;height:auto;max-height:82vh;aspect-ratio:16/9;background:#000}
-.player-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 24px;color:#f7f6f2;font-size:var(--fs-s)}
-.player-bar a{color:#f7f6f2}
-.close{all:unset;cursor:pointer;font:600 var(--fs-s) var(--sans);color:#f7f6f2;text-decoration:underline;text-underline-offset:4px}
-.close:focus-visible,.player-bar a:focus-visible{outline:2px solid #f7f6f2;outline-offset:4px}
 </style>
 </head>
 <body>
@@ -249,14 +217,14 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
     <a class="brand" href="index.html">One Request, Traced</a>
     <div class="top-r">
       <div id="picker"></div>
-      <nav aria-label="Sections"><a href="#chapters">Comparison</a><a href="#deep-dives">Tracers</a><a href="#films">Films</a><a href="#method">Method</a></nav>
+      <nav aria-label="Sections"><a href="#chapters">Comparison</a><a href="#deep-dives">Tracers</a><a href="#method">Method</a></nav>
     </div>
   </header>
 
   <section class="hero">
     <h1><span class="a">llama.cpp</span> <small>or</small> <span class="b">vLLM</span>?</h1>
     <p class="headline" id="headline"></p>
-    <p class="dek">The same chat request, sent to both servers on one RTX 4090, followed through their source and timed. <a href="video/llama-cpp-request-trace.mp4" data-play>Watch Episode 1 (1:44)</a></p>
+    <p class="dek">The same chat request, sent to both servers on one RTX 4090, followed through their source and timed.</p>
     <div class="hero-chart" id="hero-chart"></div>
     <ol class="qs">
       <li data-teaser="q1"><a href="#q1"><span class="sw"><span class="stat"></span><span class="unit"></span></span><span class="q"><b>How far does vLLM pull ahead as more people chat?</b><span class="tt"></span></span></a></li>
@@ -310,50 +278,6 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
   </div>
 </section>
 
-<section class="wrap" id="films" aria-labelledby="h-films">
-  <div class="sec">
-    <h2 id="h-films">The films</h2>
-    <p class="lede">Each episode answers one question about your own request, in under two minutes.</p>
-    <div class="films">
-      <figure class="reel">
-        <button type="button" data-play aria-label="Play Episode 1, The Trip, 1 minute 44 seconds">
-          <img src="assets/preview-llama-cpp-video.webp" width="1920" height="1080" alt="Title card: One request, traced. Episode 1. A typed prompt reads Why is the sky blue?" loading="lazy">
-          <span class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M3 1.5v11l9.5-5.5z" fill="currentColor"/></svg></span>
-        </button>
-        <figcaption>Episode 1, The Trip (1:44)</figcaption>
-      </figure>
-      <ol class="eps">
-        <li class="ep now">
-          <span class="n">1</span>
-          <div><h3>The Trip</h3><p>What happens between pressing Enter and the first word?</p><p class="meta">llama.cpp</p></div>
-          <span class="st"><a href="video/llama-cpp-request-trace.mp4" data-play>Watch now</a></span>
-        </li>
-        <li class="ep">
-          <span class="n">2</span>
-          <div><h3>Warm Start</h3><p>Why is my second message faster?</p><p class="meta">llama.cpp</p></div>
-          <span class="st">Up next</span>
-        </li>
-        <li class="ep">
-          <span class="n">3</span>
-          <div><h3>One Word</h3><p>How does the model pick the next word?</p><p class="meta">llama.cpp</p></div>
-          <span class="st">Coming</span>
-        </li>
-        <li class="ep">
-          <span class="n">4</span>
-          <div><h3>Many Chats, One GPU</h3><p>How does one GPU serve many people at once?</p><p class="meta">vLLM</p></div>
-          <span class="st">Coming</span>
-        </li>
-        <li class="ep">
-          <span class="n">5</span>
-          <div><h3>Two Engines</h3><p>How do llama.cpp and vLLM differ on the same request?</p><p class="meta">Both engines</p></div>
-          <span class="st">Coming</span>
-        </li>
-      </ol>
-    </div>
-    <p class="next-series">In the works: <b>Decision models</b>, a second series in the same style.</p>
-  </div>
-</section>
-
 <section class="wrap" id="method" aria-labelledby="h-method">
   <div class="sec">
     <h2 id="h-method">How this was measured</h2>
@@ -373,37 +297,23 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
 <div class="wrap">
   <footer>
     <p>Each repo was read at the pinned commit listed under Method with Claude, and every code step links to its source line. Simplified, and probably wrong in places. Corrections welcome as issues.</p>
-    <p>Learning notes, not affiliated with <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a>. Films made with Claude; images HiDream-I1, voice ElevenLabs, motion and score built in code.</p>
+    <p>Learning notes, not affiliated with <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> or <a href="https://github.com/vllm-project/vllm">vLLM</a>.</p>
   </footer>
 </div>
 
-<dialog id="player" aria-label="Episode 1, The Trip">
-  <div class="player">
-    <video controls playsinline preload="none" poster="assets/preview-llama-cpp-video.webp" width="1920" height="1080">
-      <source src="video/llama-cpp-request-trace.mp4" type="video/mp4">
-      <track kind="captions" srclang="en" label="English" src="video/llama-cpp-request-trace.en.vtt">
-      <a href="video/llama-cpp-request-trace.mp4">Download the video (MP4, 26 MB)</a>
-    </video>
-    <div class="player-bar">
-      <span>Episode 1, The Trip (1:44)</span>
-      <span><a href="llama-cpp.html">Open the llama.cpp tracer</a> &nbsp; <button class="close" type="button" data-close>Close</button></span>
-    </div>
-  </div>
-</dialog>
-
-<script src="data/registry.js"></script>
-<script src="data/compare.js"></script>
-<script src="data/engines/llama-cpp.steps.js"></script>
-<script src="data/engines/llama-cpp.js"></script>
-<script src="data/engines/vllm.steps.js"></script>
-<script src="data/engines/vllm.js"></script>
-<script src="data/pairs/llama-cpp--vllm.js"></script>
-<script src="data/bench/llama-cpp.js" onerror="this.remove()"></script>
-<script src="data/bench/vllm.js" onerror="this.remove()"></script>
-<script src="assets/compare/util.js"></script>
-<script src="assets/compare/stage-times.js"></script>
-<script src="assets/compare/chart.js"></script>
-<script src="assets/compare/render.js"></script>
-<script src="assets/compare/page.js"></script>
+<script src="data/registry.js?v=a869b3c9"></script>
+<script src="data/compare.js?v=84254d64"></script>
+<script src="data/engines/llama-cpp.steps.js?v=446346f4"></script>
+<script src="data/engines/llama-cpp.js?v=cc4d444c"></script>
+<script src="data/engines/vllm.steps.js?v=0a7f42ef"></script>
+<script src="data/engines/vllm.js?v=6853d3db"></script>
+<script src="data/pairs/llama-cpp--vllm.js?v=45c2de95"></script>
+<script src="data/bench/llama-cpp.js?v=e9523e92" onerror="this.remove()"></script>
+<script src="data/bench/vllm.js?v=ae74fd5a" onerror="this.remove()"></script>
+<script src="assets/compare/util.js?v=516e7587"></script>
+<script src="assets/compare/stage-times.js?v=c1a5132d"></script>
+<script src="assets/compare/chart.js?v=0c494bd7"></script>
+<script src="assets/compare/render.js?v=f3f9118a"></script>
+<script src="assets/compare/page.js?v=dd732265"></script>
 </body>
 </html>

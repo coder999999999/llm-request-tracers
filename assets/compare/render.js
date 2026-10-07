@@ -74,6 +74,29 @@
     return html;
   };
 
+  // ---- hero summary -----------------------------------------------------
+
+  // The one-sentence takeaway from the pair file, or '' until it is written.
+  RTR.headline = function (ctx) {
+    var h = ctx.pair && ctx.pair.headline;
+    return h ? txt(h) : '';
+  };
+
+  // A question's one-line answer: {stat, unit, text, color} from the pair file, or null.
+  // color is the named engine's text colour when that engine is on the page, else ink.
+  RTR.teaser = function (ctx, qid) {
+    var t = ctx.pair && ctx.pair.teasers && ctx.pair.teasers[qid];
+    if (!t || !t.text) return null;
+    var e = [ctx.a, ctx.b].filter(function (x) { return x && x.id === t.engine; })[0];
+    return { stat: t.stat ? txt(t.stat) : '', unit: t.unit ? txt(t.unit) : '', text: txt(t.text), color: e ? tcol(e.color) : INK };
+  };
+
+  // The question 1 throughput chart, drawn for the top of the page.
+  RTR.heroChart = function (ctx) {
+    var q = ((ctx.compare && ctx.compare.questions) || []).filter(function (x) { return x.chart === 'throughput'; })[0];
+    return q ? throughput(q, ctx) : '';
+  };
+
   // ---- code paths -------------------------------------------------------
 
   // A step's fn is code when it is an identifier, a call (with or without arguments, with

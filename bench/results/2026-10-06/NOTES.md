@@ -60,20 +60,28 @@ Every sentence of benchmark-derived text on the comparison page, with the chart 
 
 | Bullet | Backing |
 |---|---|
-| Matched vLLM at 1 user, 50.4 against 49.4 tok/s | throughput chart, 1 user; `levels[0].tok_s.median` 50.4 and 49.37 |
-| At most 1.2x behind up to 8 users | throughput chart: 2 users 97.05 / 97.40, 4 users 182.7 / 192.7, 8 users 327.3 / 379.5 (ratio 1.16) |
-| About 1,490 tokens of system prompt: repeat messages reached the first token in 29 ms against 34 ms for vLLM, the first message in 166 ms against 175 ms | prompt reuse chart; control run `reuse.warm_ttft_ms` 29.14 and 33.89, `reuse.cold_ttft_ms` 165.5 and 175.5. The cold gap is under 10% of the larger value, so no cold-start claim is made. System prompt size: reuse section above (about 1,490 tokens) |
-| Model is a GGUF file, loader reads it | Model formats feature row, `src/llama-model-loader.cpp:570` |
-| Hardware row lists build-time backends such as CUDA and Metal | Hardware feature row, `ggml/src/ggml-backend-reg.cpp:120` |
-| Only CUDA on one RTX 4090 was measured | `env.json` gpu; Method section |
+| Within 1.2x of vLLM up to 8 users | throughput chart: 1 user 50.4 / 49.37, 2 users 97.05 / 97.40, 4 users 182.7 / 192.7, 8 users 327.3 / 379.5 (ratio 1.16) |
+| Model is a GGUF file, the format llama.cpp loads | Model formats feature row, `src/llama-model-loader.cpp:570` |
+
+The prompt reuse bullet was dropped: 29 against 34 ms warm and 166 against 175 ms cold is too close to be a reason to choose. The page now calls prompt reuse even (teaser q2).
+
+### Headline and question teasers
+
+| Text | Backing |
+|---|---|
+| Headline: even with one person chatting; 2.5 times as much text at 64 | throughput chart, 1 user 50.4 / 49.37 and 64 users 2,209.4 / 892.45 (ratio 2.476). "Text" means output tokens |
+| q1: 2.5x, vLLM output at 64 users; even at 1 user | as the headline |
+| q2: even; both answer a repeat 5 to 6 times faster than the first | prompt reuse chart; ratios 5.7 (llama.cpp) and 5.2 (vLLM), see the q2 answer row |
+| q3: 1 vs 2 processes; threads in one process against two processes | q3 answer; Arrive and Speak hops in both engine files |
+| q4: 128 of 128 llama.cpp requests failed once long replies filled the cache; vLLM preempted and kept serving | KV cache table: llama.cpp failed 128 at 512 and 1,024 tokens; vLLM preemptions 68 and 264, no failures |
 
 ### Verdict, vLLM ("Reach for vLLM if")
 
 | Bullet | Backing |
 |---|---|
-| 2,209 against 892 tok/s at 64 users, 2.5x | throughput chart, 64 users; medians 2,209.4 and 892.45, ratio 2.476 |
-| Kept serving at 512 and 1,024 tokens, 2,072 and 1,506 tok/s, by preempting; every llama.cpp request failed | KV cache chart (vLLM tok_s 2,072.3 and 1,506.5) and its table (preemptions 68 and 264; llama.cpp failed requests 128 at both); KV-full findings above; KV-full feature row (preempts a request, recomputes later) |
-| At 32 users the time before prefill was 115 ms against 420 ms | "Before prefill, at 32 users" row under the question 1 chart: TTFT minus prefill, 411.3 - 296.4 = 114.9 ms and 786.4 - 366.3 = 420.1 ms (derived as TTFT minus the prefill time each server reports: llama.cpp `prompt_ms`, the vLLM prefill histogram; the two prefill figures are not measured identically) |
+| 2.5 times as much text at 64 users | throughput chart, 64 users; medians 2,209.4 and 892.45 tok/s, ratio 2.476 |
+| Kept serving when the cache filled, where every llama.cpp request failed (at 512 and 1,024 tokens, 2,072 and 1,506 tok/s, by preempting) | KV cache chart (vLLM tok_s 2,072.3 and 1,506.5) and its table (preemptions 68 and 264; llama.cpp failed requests 128 at both); KV-full findings above; KV-full feature row (preempts a request, recomputes later) |
+| At 32 users requests waited about 115 ms before work began, against 420 ms | "Before prefill, at 32 users" row under the question 1 chart: TTFT minus prefill, 411.3 - 296.4 = 114.9 ms and 786.4 - 366.3 = 420.1 ms (derived as TTFT minus the prefill time each server reports: llama.cpp `prompt_ms`, the vLLM prefill histogram; the two prefill figures are not measured identically) |
 
 Caveat on the KV-cache bullet: the kvfull config differs by engine (llama.cpp `--kv-unified` with a 32,768-token shared context; vLLM `--max-model-len 2048` with 2,048 blocks). Both have the same 32,768-token budget (see `env.json` `server_args.kvfull`).
 

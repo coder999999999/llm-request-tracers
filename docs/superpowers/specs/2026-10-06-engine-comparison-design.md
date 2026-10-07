@@ -37,12 +37,13 @@ The reference mockups live outside the repo, in `../mockups/` (`v1-paper`, `v2-w
 From top to bottom:
 
 1. **Top bar.** The "One Request, Traced" wordmark on the left, section links on the right (Comparison, Tracers, Films, Method). The compare picker appears in the bar only once a third engine is registered; until then the engine names in the H1 do that job. The plan to add engines is mentioned in one line in the Method section.
-2. **Hero** (static HTML, works without JS).
-   - H1 "llama.cpp or vLLM?" with each name in its engine colour.
-   - One sentence of setup: same request, same prompt, same RTX 4090.
-   - A link: "Watch Episode 1 (1:44)" opens the existing modal player.
-   - Right column: the verdict, "Reach for llama.cpp if…" and "Reach for vLLM if…", three bullets each. **The verdict text is written after the benchmark (phase 3).** It comes from the pair file (see §4), never hard-coded in the renderer.
-3. **Question list** (static HTML). Four numbered questions, each linking to its chapter:
+2. **Hero**, one column. The page answers first, then shows the evidence, then lists the questions. (Revised 2026-10-06: the first layout put the verdict under the H1 and the questions in a right column, so readers met conclusions that cited charts they had not seen yet.)
+   - H1 "llama.cpp or vLLM?" with each name in its engine colour, in the engines' own casing (not uppercased).
+   - The headline: one sentence that answers the page's question (pair file `headline`).
+   - One sentence of setup (same request, one RTX 4090), ending in the "Watch Episode 1 (1:44)" link, which opens the existing modal player.
+   - The question 1 throughput chart.
+   - The verdict, "Reach for llama.cpp if" and "Reach for vLLM if", is no longer in the hero. It sits in a "So which one?" section after the four chapters, once the reader has seen the evidence. One claim and at most one number per bullet, with no chart references. It comes from the pair file (see §4), never hard-coded in the renderer.
+3. **Question list** (static HTML, filled from the pair file's `teasers`). Each row shows the one number to remember (`stat`, coloured by `engine` when one engine wins), what it counts (`unit`), the question, and a one-line answer (`text`). Without teasers the list shows only the questions. Four questions, each linking to its chapter:
    1. Why does vLLM pull ahead once many people are chatting? (Wait)
    2. Who reuses your prompt better? (Think)
    3. Where does your request cross a thread or process boundary? (Arrive and Speak)

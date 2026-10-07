@@ -54,26 +54,40 @@ table.sr-only{left:-10000px}
 @media (max-width:600px){.top nav{gap:8px 16px}.top-r{gap:8px 16px}}
 
 /* hero */
-.hero{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:64px;padding-block:96px 64px}
-@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr);gap:48px;padding-block:48px}}
-.hero h1{font:700 var(--fs-h1)/.88 var(--display);letter-spacing:-.025em;text-transform:uppercase;overflow-wrap:anywhere}
+.hero{padding-block:64px 48px}
+.hero h1{font:700 var(--fs-h1)/.88 var(--display);letter-spacing:-.02em;overflow-wrap:anywhere}
 .hero h1 .a{color:var(--a)}
 .hero h1 .b{color:var(--b)}
-.hero h1 small{display:block;font:500 .38em var(--sans);letter-spacing:0;color:var(--ink3);margin:12px 0 8px;text-transform:none}
-.dek{margin:32px 0 0;font-size:var(--fs-xl);line-height:1.5;color:var(--ink2);max-width:28em}
-.watch{margin:24px 0 0;font-size:var(--fs-base)}
-.watch a{font-weight:600;text-decoration-thickness:1px;text-underline-offset:4px}
-.watch a:hover{text-decoration-thickness:2px}
-.verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:48px}
+.hero h1 small{font:inherit;color:var(--ink3)}
+.headline{margin:24px 0 0;max-width:24em;font:600 var(--fs-2xl)/1.25 var(--sans);letter-spacing:-.01em}
+.headline:empty{display:none}
+@media (max-width:600px){.headline{font-size:var(--fs-xl)}}
+.dek{margin:16px 0 0;font-size:var(--fs-l);line-height:1.5;color:var(--ink2);max-width:36em}
+.dek a{font-weight:600;color:var(--ink);text-decoration-thickness:1px;text-underline-offset:4px;white-space:nowrap}
+.dek a:hover{text-decoration-thickness:2px}
+.hero-chart{max-width:760px;margin-top:48px}
+.hero-chart:empty{display:none}
+.verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:24px}
 @media (max-width:600px){.verdict{grid-template-columns:minmax(0,1fr)}}
 .verdict h3{font:700 var(--fs-s) var(--sans);padding-bottom:8px;border-bottom:2px solid var(--rule2)}
 .verdict ul{list-style:none;margin:0;padding:0}
 .verdict li{max-width:32em;padding:12px 0;border-bottom:1px solid var(--rule);font-size:var(--fs-base)}
-.qs{list-style:none;margin:0;padding:0;align-self:end;border-top:2px solid var(--rule2)}
+.which{border-top:2px solid var(--rule2);padding-block:48px 64px}
+.which h2{font:700 var(--fs-2xl)/1.1 var(--sans);letter-spacing:-.01em}
+/* question list: each question's number to remember, what it counts, the question and a one-line answer */
+.qs{list-style:none;max-width:960px;margin:64px 0 0;padding:0;border-top:2px solid var(--rule2)}
 .qs li{border-bottom:1px solid var(--rule)}
-.qs a{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;padding:16px 0;text-decoration:none;font:600 var(--fs-l)/1.35 var(--sans)}
-.qs a span{color:var(--ink2);font-weight:500;font-variant-numeric:tabular-nums}
+.qs a{display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start;padding:24px 0;text-decoration:none}
+.qs .stat{display:block;font:700 48px/1 var(--display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.qs .unit{display:block;margin-top:8px;font:500 var(--fs-s)/1.35 var(--sans);color:var(--ink2)}
+.qs .q{padding-top:6px}
+.qs b{display:block;font:600 var(--fs-l)/1.35 var(--sans)}
+.qs .tt{display:block;margin-top:4px;font-size:var(--fs-base);line-height:1.5;color:var(--ink2)}
 .qs a:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+@media (max-width:760px){.qs a{grid-template-columns:minmax(0,1fr);gap:8px}.qs .stat{font-size:40px}}
+.qs.no-stats a{grid-template-columns:minmax(0,1fr);padding:16px 0}
+.qs.no-stats .sw{display:none}
+.qs.no-stats .q{padding-top:0}
 .qs b{font-weight:600}
 
 /* chapters */
@@ -240,21 +254,24 @@ dialog::backdrop{background:rgba(12,10,6,.82)}
   </header>
 
   <section class="hero">
-    <div>
-      <h1><span class="a">llama.cpp</span><small>or</small><span class="b">vLLM</span>?</h1>
-      <p class="dek">The same chat request, sent to both servers on one RTX 4090. Followed through their source, and timed.</p>
-      <p class="watch"><a href="video/llama-cpp-request-trace.mp4" data-play>Watch Episode 1 (1:44)</a></p>
-      <div id="verdict"></div>
-    </div>
+    <h1><span class="a">llama.cpp</span> <small>or</small> <span class="b">vLLM</span>?</h1>
+    <p class="headline" id="headline"></p>
+    <p class="dek">The same chat request, sent to both servers on one RTX 4090, followed through their source and timed. <a href="video/llama-cpp-request-trace.mp4" data-play>Watch Episode 1 (1:44)</a></p>
+    <div class="hero-chart" id="hero-chart"></div>
     <ol class="qs">
-      <li><a href="#q1"><span>1</span><b>How far does vLLM pull ahead as more people chat?</b></a></li>
-      <li><a href="#q2"><span>2</span><b>Who reuses your prompt better?</b></a></li>
-      <li><a href="#q3"><span>3</span><b>Where does your request cross a thread or process boundary?</b></a></li>
-      <li><a href="#q4"><span>4</span><b>What happens when the KV cache runs out of room?</b></a></li>
+      <li data-teaser="q1"><a href="#q1"><span class="sw"><span class="stat"></span><span class="unit"></span></span><span class="q"><b>How far does vLLM pull ahead as more people chat?</b><span class="tt"></span></span></a></li>
+      <li data-teaser="q2"><a href="#q2"><span class="sw"><span class="stat"></span><span class="unit"></span></span><span class="q"><b>Who reuses your prompt better?</b><span class="tt"></span></span></a></li>
+      <li data-teaser="q3"><a href="#q3"><span class="sw"><span class="stat"></span><span class="unit"></span></span><span class="q"><b>Where does your request cross a thread or process boundary?</b><span class="tt"></span></span></a></li>
+      <li data-teaser="q4"><a href="#q4"><span class="sw"><span class="stat"></span><span class="unit"></span></span><span class="q"><b>What happens when the KV cache runs out of room?</b><span class="tt"></span></span></a></li>
     </ol>
   </section>
 
   <div id="chapters"><noscript><p class="empty">The comparison is drawn by a script. Enable JavaScript to read it, or open either tracer directly.</p></noscript></div>
+
+  <section class="which" aria-labelledby="h-which">
+    <h2 id="h-which">So which one?</h2>
+    <div id="verdict"></div>
+  </section>
 </div>
 
 <section class="wrap" id="every-stage" aria-labelledby="h-every">

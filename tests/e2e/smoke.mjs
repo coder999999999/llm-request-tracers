@@ -125,7 +125,7 @@ async function layoutChecks(browser, base, mode) {
     const m = await page.evaluate(() => ({
       sw: document.documentElement.scrollWidth, bw: document.body.scrollWidth, iw: window.innerWidth,
       chapters: document.querySelectorAll('.chapter').length,
-      ids: ['chapters', 'every-stage', 'deep-dives', 'films', 'method'].filter(id => !document.getElementById(id)),
+      ids: ['chapters', 'every-stage', 'deep-dives', 'method'].filter(id => !document.getElementById(id)),
       rows: document.querySelectorAll('.stage-row').length,
       links: [...document.querySelectorAll('.qs a')].map(a => a.getAttribute('href')),
       picker: document.querySelectorAll('#picker select').length,
@@ -219,12 +219,6 @@ async function interactionChecks(page, where) {
   });
   ok(clicked.open, where, 'track click should open the stage details');
   ok(clicked.top >= -4 && clicked.top < clicked.h / 2, where, `stage row not scrolled into view (top ${clicked.top})`);
-
-  // The Episode 1 player opens from the hero link.
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
-  await page.evaluate(() => document.querySelector('[data-play]').click());
-  ok(await page.evaluate(() => document.getElementById('player').open), where, 'player dialog did not open');
-  await page.evaluate(() => document.getElementById('player').close());
 }
 
 // With bench results and pair annotations present, every chart draws and its text

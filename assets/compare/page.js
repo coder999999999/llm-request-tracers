@@ -1,6 +1,6 @@
 // The only file that touches the DOM. It reads the registered data, asks RTR for
 // HTML strings, fills the containers in index.html, and wires up the pinned
-// track, the engine picker and the Episode 1 player.
+// track and the engine picker.
 (function () {
   var RT = window.RT, RTU = window.RTU, RTR = window.RTR;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -249,27 +249,9 @@
     window.addEventListener('scroll', function () { if (current && !tip.hidden) show(current); }, { passive: true });
   }
 
-  // ---- Episode 1 player -------------------------------------------------
-
-  function wirePlayer() {
-    var dlg = $('player');
-    var vid = dlg.querySelector('video');
-    function open(e) {
-      e.preventDefault();
-      if (!dlg.showModal) { location.href = 'video/llama-cpp-request-trace.mp4'; return; }
-      dlg.showModal();
-      vid.play().catch(function () {});
-    }
-    document.querySelectorAll('[data-play]').forEach(function (el) { el.addEventListener('click', open); });
-    dlg.querySelector('[data-close]').addEventListener('click', function () { dlg.close(); });
-    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
-    dlg.addEventListener('close', function () { vid.pause(); });
-  }
-
   if (RT.errors && RT.errors.length && window.console) console.warn('Data problems:', RT.errors);
   wireTrack($('chapters'));
   wirePicker();
-  wirePlayer();
   wireTips();
   wireResize();
   render();

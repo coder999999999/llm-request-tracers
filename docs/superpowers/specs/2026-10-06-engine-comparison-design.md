@@ -36,11 +36,11 @@ The reference mockups live outside the repo, in `../mockups/` (`v1-paper`, `v2-w
 
 From top to bottom:
 
-1. **Top bar.** The "One Request, Traced" wordmark on the left, section links on the right (Comparison, Tracers, Films, Method). The compare picker appears in the bar only once a third engine is registered; until then the engine names in the H1 do that job. The plan to add engines is mentioned in one line in the Method section.
+1. **Top bar.** The "One Request, Traced" wordmark on the left, section links on the right (Comparison, Tracers, Method). The compare picker appears in the bar only once a third engine is registered; until then the engine names in the H1 do that job. The plan to add engines is mentioned in one line in the Method section.
 2. **Hero**, one column. The page answers first, then shows the evidence, then lists the questions. (Revised 2026-10-06: the first layout put the verdict under the H1 and the questions in a right column, so readers met conclusions that cited charts they had not seen yet.)
    - H1 "llama.cpp or vLLM?" with each name in its engine colour, in the engines' own casing (not uppercased).
    - The headline: one sentence that answers the page's question (pair file `headline`).
-   - One sentence of setup (same request, one RTX 4090), ending in the "Watch Episode 1 (1:44)" link, which opens the existing modal player.
+   - One sentence of setup (same request, one RTX 4090).
    - The question 1 throughput chart.
    - The verdict, "Reach for llama.cpp if" and "Reach for vLLM if", is no longer in the hero. It sits in a "So which one?" section after the four chapters, once the reader has seen the evidence. One claim and at most one number per bullet, with no chart references. It comes from the pair file (see §4), never hard-coded in the renderer.
 3. **Question list** (static HTML, filled from the pair file's `teasers`). Each row shows the one number to remember (`stat`, coloured by `engine` when one engine wins), what it counts (`unit`), the question, and a one-line answer (`text`). Without teasers the list shows only the questions. Four questions, each linking to its chapter:
@@ -67,7 +67,7 @@ From top to bottom:
    **Pinned track** (side column): two vertical lanes, one per engine colour. They are split into the four stages, with step counts and hop markers, and the current chapter's stage is highlighted using IntersectionObserver. Clicking a stage scrolls to its row in "Every stage". Below 1100px the track becomes a horizontal four-stage strip at the top of each chapter, not sticky.
 5. **Every stage.** A compact reference table, four rows (one per stage). Each row: a one-line summary per engine, step count, time per stage, and an expander showing that stage's code-path lists and feature rows. This guarantees full coverage, including Speak, which no question owns.
 6. **Deep dives.** The three tracer cards as they are on today's start page: close-up image, one line, link.
-7. **The films.** Today's series row: Episode 1 playable, Episodes 2–5 listed, the Decision models line.
+7. **The films.** Removed from the site for now (2026-10-07), along with the Episode 1 player and the Episode 1 button on the llama.cpp tracer. The video files and `docs/video-series.md` stay in the repo.
 8. **How this was measured.** Hardware, versions, model, method summary, links to `bench/README.md` and raw results.
 9. **Footer.** Pinned commits, the not-affiliated line, credits.
 

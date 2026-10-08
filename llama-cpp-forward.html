@@ -556,7 +556,7 @@ function renderHero() {
   }).sort((a, b) => b.us - a.us);
   renderBars($('hero-bars'), rows, dec.totalUs);
   const ffn = opsUs(m, 'decode', ['ffn_gate_up', 'ffn_down']).share;
-  $('hero-cap').textContent = `All ${m.nLayer} layers and the output head, summed. A typical step keeps the GPU busy for ${ms(dec.totalUs)}; across the ${dec.steps} steps of the reply, the busy time ranged from ${ms(dec.busyMinUs)} to ${ms(dec.busyMaxUs)}. The feed-forward block is ${pct(ffn)} of it; attention is ${pct(opsUs(m, 'decode', ['attention']).share)} at this context length.`;
+  $('hero-cap').textContent = `All ${m.nLayer} layers and the output head, summed. Each bar is that part's median over the ${dec.steps} steps of the reply; together they come to ${ms(dec.totalUs)}. The median step kept the GPU busy for ${ms(dec.busyMedianUs)}, and steps ranged from ${ms(dec.busyMinUs)} to ${ms(dec.busyMaxUs)}. The feed-forward block is ${pct(ffn)} of it; attention is ${pct(opsUs(m, 'decode', ['attention']).share)} at this context length.`;
 
   const ceiling = D.peakGBps * 1e9 / m.weightsBytes;
   const qs = [
@@ -653,23 +653,23 @@ const ROLE_LABEL = { q_proj: 'Q', k_proj: 'K', v_proj: 'V', o_proj: 'Attention o
 function renderMemory() {
   const m = M(), dec = m.decode;
   const minMs = m.weightsBytes / (D.peakGBps * 1e9) * 1e3;
-  $('mem-ans').textContent = `In a decode step each weight is read once and used for one multiply-add. The GPU can do far more arithmetic than that per byte, so the step lasts as long as memory takes to deliver ${GB(m.weightsBytes)}. At the card's ${fmt(D.peakGBps)} GB/s that is at least ${fmt(minMs, 2)} ms; the measured step keeps the GPU busy for ${ms(dec.totalUs)}.`;
+  $('mem-ans').textContent = `In a decode step each weight is read once and used for one multiply-add. The GPU can do far more arithmetic than that per byte, so the step lasts as long as memory takes to deliver ${GB(m.weightsBytes)}. At the card's ${fmt(D.peakGBps)} GB/s that is at least ${fmt(minMs, 2)} ms; the median measured step keeps the GPU busy for ${ms(dec.busyMedianUs)}.`;
   $('bw-sub').textContent = `${m.label}, layer 0 and the output head, median of ${dec.steps} steps`;
   drawBandwidth($('bw-chart'), m);
   const head = m.matmulBw.find(x => x.role === 'lm_head');
   const small = ['k_proj', 'v_proj'].map(r => m.matmulBw.find(x => x.role === r));
-  $('bw-cap').textContent = `Both axes are logarithmic. Points on the dashed line would move bytes at the card's peak. The output head reaches ${fmt(head.gbps)} GB/s, ${pct(head.gbps / D.peakGBps)} of peak; the key and value projections, at ${small.map(x => MiB(x.mib)).join(' and ')}, reach only ${small.map(x => fmt(x.gbps)).join(' and ')} GB/s.`;
+  $('bw-cap').textContent = `Both axes are logarithmic. Points on the dashed line would move bytes at the card's rated peak, 384 bits × 21 Gb/s. The output head reaches ${fmt(head.gbps)} GB/s, ${pct(head.gbps / D.peakGBps)} of peak; the key and value projections, at ${small.map(x => MiB(x.mib)).join(' and ')}, reach only ${small.map(x => fmt(x.gbps)).join(' and ')} GB/s.`;
 
   const a = D.models.q4_k_m, b = D.models.f16;
   const row = (label, f) => `<div class="r"><b>${label}</b><span class="n">${f(a)}</span><span class="n">${f(b)}</span></div>`;
   $('mem-facts').innerHTML = `<div class="r h"><span></span><span>Q4_K_M</span><span>F16</span></div>` +
     row('Weights read per token', x => GB(x.weightsBytes)) +
-    row('GPU time per decode step', x => ms(x.decode.totalUs)) +
-    row('Effective bandwidth', x => fmt(x.weightsBytes / (x.decode.totalUs * 1e3)) + ' GB/s') +
+    row('GPU time per decode step, median', x => ms(x.decode.busyMedianUs)) +
+    row('Weights ÷ that time', x => fmt(x.weightsBytes / (x.decode.busyMedianUs * 1e3)) + ' GB/s') +
     row('Ceiling at 1,008 GB/s', x => fmt(D.peakGBps * 1e9 / x.weightsBytes) + ' tokens/s') +
     row('Measured, no profiler', x => fmt(x.bench.tg, 1) + ' tokens/s');
   $('mem-prose').innerHTML = [
-    `F16 reads ${fmt(b.weightsBytes / a.weightsBytes, 2)} times the bytes of Q4_K_M and takes ${fmt(b.decode.totalUs / a.decode.totalUs, 2)} times as long per step. Quantization buys speed mostly by moving fewer bytes, not by doing less arithmetic.`,
+    `F16 reads ${fmt(b.weightsBytes / a.weightsBytes, 2)} times the bytes of Q4_K_M and takes ${fmt(b.decode.busyMedianUs / a.decode.busyMedianUs, 2)} times as long per step. Quantization buys speed mostly by moving fewer bytes, not by doing less arithmetic.`,
     `The measured rate, from llama-bench without the profiler, is below the ceiling for two reasons visible in the trace: small kernels (norms, RoPE, the key and value projections) never reach full bandwidth, and between steps the CPU samples a token and prepares the next batch while the GPU waits.`,
   ].map(p => `<p>${p}</p>`).join('');
 }
@@ -699,7 +699,7 @@ function drawBandwidth(el, m) {
   // Every point sits on or above the line (no kernel beats the peak), so point labels go above and left,
   // and the line's own label goes on the empty side, below and right.
   const px = 10 ** (x0 + (x1 - x0) * (narrow ? 0.5 : 0.45));
-  const annText = narrow ? `${fmt(D.peakGBps)} GB/s peak` : `${fmt(D.peakGBps)} GB/s, the card's peak`;
+  const annText = narrow ? `${fmt(D.peakGBps)} GB/s peak` : `${fmt(D.peakGBps)} GB/s, the card's rated peak`;
   const ax = X(px) + 12, ay = Y(peakUs(px)) + (narrow ? 28 : 20);
   s += `<text class="ann" x="${ax}" y="${ay}">${annText}</text>`;
   // merge points that would draw on top of each other (Q and the attention output are both 4096×4096)
@@ -850,10 +850,12 @@ function renderMethod() {
     ['Graph nodes', `From <code>llama-eval-callback</code>, which prints every ggml node as it runs. The callback makes the scheduler stop after each node, so this is the graph before CUDA fusion. That run had one sequence, while the server has four slots; the server's graph adds one reshape of each layer's cache (step 5) and is otherwise the same. The decode-shaped graph is a 1-token batch at position 0.`],
     ['Kernels and times', `From Nsight Systems 2026.3 tracing one real request to <code>llama-server</code>. The request is cut into ${q.decode.steps + 1} passes at each logits copy back to the CPU. The prompt pass is a single run; decode numbers are the median per kernel over the ${q.decode.steps} steps. Kernel times are reliable under the profiler; wall-clock times are not, because tracing slows every launch.`],
     ['Tokens per second', `From <code>llama-bench -p 41 -n 64 -r 5</code> with no profiler: ${fmt(q.bench.tg, 1)} tokens/s for Q4_K_M and ${fmt(f.bench.tg, 1)} for F16.`],
+    ['Context length', `Every number here is for a short context: 41 prompt tokens growing to about 105. Attention reads the whole cache, so longer chats decode more slowly; one published llama-bench run of a similar 8B model on a 4090 gives about 131 tokens/s at a 4K context (<a href="https://www.hardware-corner.net/rtx-4090-llm-benchmarks/">Hardware Corner</a>).`],
+    ['Checked against', `<p>llama.cpp's own <a href="https://github.com/ggml-org/llama.cpp/discussions/15013">CUDA scoreboard</a> has the RTX 4090 at 189 tokens/s for Llama 2 7B Q4_0, a 3.56 GiB file. Decode reads every weight once, so scaling that by bytes read on the GPU (about 3.75 GB there, ${GB(q.weightsBytes)} here) predicts about 153 tokens/s for this model. llama-bench measured ${fmt(q.bench.tg, 1)}.</p><p>The comparison page's benchmark served the same F16 model through <code>llama-server</code> at 19.5 ms per token for one user. llama-bench gives ${fmt(1000 / f.bench.tg, 1)} ms here. The gap, about 6%, covers the server's own work per token and that benchmark's longer prompts (about 175 tokens).</p><p>The model constants used here (4,096 wide, 14,336 in the feed-forward block, 32 query and 8 key-value heads, ε = 10<sup>−5</sup>, RoPE base 500,000 with the llama3 scaling) match Meta's <a href="https://huggingface.co/unsloth/Llama-3.1-8B-Instruct/blob/main/config.json">config.json</a>. The Q4_K_M file matches the size of the widely used <a href="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF">bartowski build</a>, 4.92 GB.</p>`],
     ['Bandwidth', `Bytes of the weight matrices a kernel must read, divided by its time. Activations, the KV cache and the 8-bit activation copies are left out; at this context length they are a few hundred kilobytes per step.`],
     ['Raw data', `<a href="inference/captures/${esc(D.capture)}/NOTES.md">Notes</a>, the inventories for <a href="inference/captures/${esc(D.capture)}/q4_k_m/inventory.md">Q4_K_M</a> and <a href="inference/captures/${esc(D.capture)}/f16/inventory.md">F16</a>, and <a href="inference/README.md">how to rerun the capture</a>.`],
   ];
-  $('spec').innerHTML = items.map(([k, v]) => `<div><dt>${k}</dt><dd><p>${v}</p></dd></div>`).join('');
+  $('spec').innerHTML = items.map(([k, v]) => `<div><dt>${k}</dt><dd>${v.startsWith('<p>') ? v : `<p>${v}</p>`}</dd></div>`).join('');
 }
 
 /* ---------- switches, tooltip, render ---------- */

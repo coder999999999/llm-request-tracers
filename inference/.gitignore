@@ -1,0 +1,4 @@
+# Large and regenerable (see README.md)
+captures/**/trace_cuda_gpu_trace.csv
+captures/**/sched-prefill.log
+captures/**/*.sqlite

@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>One forward pass, One Request, Traced</title>
+<meta name="description" content="What llama.cpp's GPU does to produce one token of Llama 3.1 8B: every graph node and every CUDA kernel of one prompt pass and one decode step, timed on an RTX 4090.">
+<meta property="og:title" content="One forward pass">
+<meta property="og:description" content="Every graph node and CUDA kernel of one llama.cpp forward pass, timed on an RTX 4090.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Tokens and type follow assets/compare/site.css (spec 2026-10-06 §7). Spacing: 4, 8, 12, 16, 24, 32, 48, 64, 96 only. */
+:root{
+  --bg:#f7f6f2; --ink:#121212; --ink2:#4b4b48; --ink3:#86847d; --rule:#e2dfd6; --rule2:#121212; --track:#ebe8df;
+  --a:#d9662a; --a-text:#b8521f;
+  --fs-xs:13px; --fs-s:15px; --fs-base:17px; --fs-l:19px; --fs-xl:22px; --fs-2xl:32px;
+  --fs-h1:clamp(56px,8.5vw,112px); --fs-h2:clamp(36px,5vw,60px);
+  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Archivo Narrow","Arial Narrow",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 var(--fs-base)/1.6 var(--sans);-webkit-font-smoothing:antialiased;font-feature-settings:"kern","liga"}
+a{color:inherit}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:2px}
+h1,h2,h3,h4{margin:0}
+p{margin:0}
+code{font:var(--fs-xs) var(--mono);overflow-wrap:anywhere}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:48px}
+@media (max-width:600px){.wrap{padding-inline:16px}}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+table.sr-only{left:-10000px}
+.tab{font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 32px;min-height:64px;padding-block:12px;border-bottom:2px solid var(--rule2)}
+.brand{font:700 var(--fs-s) var(--sans);letter-spacing:-.005em;text-decoration:none}
+.top nav{display:flex;flex-wrap:wrap;gap:8px 32px;font-size:var(--fs-s);color:var(--ink2)}
+.top nav a{text-decoration:none}
+.top nav a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:4px}
+.top nav a[aria-current="page"]{color:var(--ink);font-weight:600}
+@media (max-width:600px){.top nav{gap:8px 16px}}
+
+/* hero */
+.hero{padding-block:64px 48px}
+.hero h1{font:700 var(--fs-h1)/.88 var(--display);letter-spacing:-.02em;overflow-wrap:anywhere}
+.hero h1 .a{color:var(--a)}
+.headline{margin-top:24px;max-width:24em;font:600 var(--fs-2xl)/1.25 var(--sans);letter-spacing:-.01em}
+@media (max-width:600px){.headline{font-size:var(--fs-xl)}}
+.dek{margin-top:16px;font-size:var(--fs-l);line-height:1.5;color:var(--ink2);max-width:36em}
+
+/* model and phase switches: plain text buttons, the current one in ink with an underline */
+.switch{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;margin-top:32px;font-size:var(--fs-s);color:var(--ink2)}
+.switch [role=group]{display:flex;flex-wrap:wrap;gap:4px 16px}
+.switch button{font:500 var(--fs-s) var(--sans);color:var(--ink2);background:none;border:0;padding:4px 0;cursor:pointer;text-decoration:none;border-bottom:2px solid transparent}
+.switch button:hover{color:var(--ink);border-bottom-color:var(--rule)}
+.switch button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+
+/* figures */
+figure{margin:0}
+.fig-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 24px}
+.fig-h h3{font:600 var(--fs-base) var(--sans)}
+.fig-h p{font-size:var(--fs-s);color:var(--ink2)}
+figcaption{max-width:32em;margin-top:12px;font-size:var(--fs-s);color:var(--ink2)}
+.hero figure{max-width:760px;margin-top:48px}
+
+/* ranked bars: label, track, value */
+.bars{margin-top:16px;border-top:1px solid var(--rule)}
+.bar{display:grid;grid-template-columns:220px minmax(0,1fr) 120px;gap:4px 16px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule);font-size:var(--fs-s)}
+.bar .lbl{font-weight:600}
+.bar .track{height:12px;background:var(--track);border-radius:2px;overflow:hidden}
+.bar .track i{display:block;height:100%;background:var(--a)}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.bar .v b{color:var(--ink);font-weight:600}
+.bar:focus-visible{outline-offset:2px}
+@media (max-width:600px){.bar{grid-template-columns:minmax(0,1fr) 104px}.bar .track{grid-column:1/-1;grid-row:2}}
+
+/* question list, as on the comparison page */
+.qs{list-style:none;max-width:960px;margin:64px 0 0;padding:0;border-top:2px solid var(--rule2)}
+.qs li{border-bottom:1px solid var(--rule)}
+.qs a{display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start;padding:24px 0;text-decoration:none}
+.qs .stat{display:block;font:700 48px/1 var(--display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.qs .unit{display:block;margin-top:8px;font:500 var(--fs-s)/1.35 var(--sans);color:var(--ink2)}
+.qs .q{padding-top:6px}
+.qs b{display:block;font:600 var(--fs-l)/1.35 var(--sans)}
+.qs .tt{display:block;margin-top:4px;font-size:var(--fs-base);line-height:1.5;color:var(--ink2)}
+.qs a:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+@media (max-width:760px){.qs a{grid-template-columns:minmax(0,1fr);gap:8px}.qs .stat{font-size:40px}}
+
+/* chapters */
+.chapter{padding-block:48px 64px;border-top:2px solid var(--rule2)}
+@media (min-width:1100px){.chapter{padding-block:64px 96px}}
+.chapter>.col{max-width:760px}
+.num{font:700 var(--fs-s) var(--sans);color:var(--ink2);font-variant-numeric:tabular-nums}
+.chapter h2{margin:12px 0 24px;font:700 var(--fs-h2)/.95 var(--display);letter-spacing:-.02em;text-transform:uppercase;max-width:13em;overflow-wrap:anywhere}
+.ans{margin:0 0 48px;font-size:var(--fs-xl);line-height:1.5;max-width:32em}
+@media (max-width:600px){.ans{font-size:var(--fs-l)}}
+.prose p{max-width:32em;margin-top:16px}
+.prose p:first-child{margin-top:0}
+
+/* chapter 1: the layer walk. A sticky list of steps on the left, the steps on the right. */
+.walk{display:grid;grid-template-columns:260px minmax(0,1fr);gap:48px;margin-top:32px}
+@media (max-width:960px){.walk{grid-template-columns:minmax(0,1fr)}.strip{display:none}}
+.strip{position:sticky;top:24px;align-self:start;border-top:2px solid var(--rule2)}
+.strip ol{list-style:none;margin:0;padding:0}
+.strip a{display:grid;grid-template-columns:24px minmax(0,1fr) 48px;gap:2px 8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule);font-size:var(--fs-s);text-decoration:none;color:var(--ink2)}
+.strip a:hover{color:var(--ink)}
+.strip a:hover .t{text-decoration:underline;text-underline-offset:4px}
+.strip a.on{color:var(--ink);font-weight:600}
+.strip .n{font-variant-numeric:tabular-nums}
+.strip .pc{text-align:right;font-variant-numeric:tabular-nums;font-weight:400}
+.strip .mini{grid-column:2/-1;height:4px;background:var(--track);border-radius:2px;overflow:hidden}
+.strip .mini i{display:block;height:100%;background:var(--a)}
+.strip .h{display:block;padding:8px 0;font-size:var(--fs-s);color:var(--ink2);border-bottom:1px solid var(--rule)}
+.steps{min-width:0;border-top:2px solid var(--rule2)}
+.stp{padding:32px 0 48px;border-bottom:1px solid var(--rule);scroll-margin-top:24px}
+.stp h3{display:flex;gap:16px;align-items:baseline;font:600 var(--fs-xl)/1.3 var(--sans);letter-spacing:-.01em}
+.stp h3 .n{font:700 var(--fs-s) var(--sans);color:var(--ink2);font-variant-numeric:tabular-nums;min-width:24px}
+.stp .lead{margin-top:16px;max-width:32em}
+.stp .lead + .lead{margin-top:12px}
+.math{margin-top:16px;padding:12px 16px;border-left:2px solid var(--a);font-size:var(--fs-base);max-width:32em;overflow-wrap:anywhere}
+.math i{font-style:italic}
+.cost{margin-top:16px;font-size:var(--fs-s);color:var(--ink2);max-width:36em}
+.cost b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;margin-top:24px}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr);gap:24px}}
+.two h4{margin:0 0 4px;font:700 var(--fs-s) var(--sans)}
+.two h4 span{font-weight:400;color:var(--ink2)}
+.rows{width:100%;border-collapse:collapse;font-size:var(--fs-s)}
+.rows td,.rows th{padding:6px 0;border-top:1px solid var(--rule);vertical-align:top;text-align:left}
+.rows th{font-weight:400;color:var(--ink2)}
+.rows td + td,.rows th + th{padding-left:12px}
+.rows .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rows code{color:var(--ink)}
+.rows .dim,.rows .dim code{color:var(--ink3)}
+.note{margin-top:16px;font-size:var(--fs-s);color:var(--ink2);max-width:36em}
+.srcs{display:flex;flex-direction:column;gap:4px;margin-top:24px}
+.src{font:var(--fs-xs) var(--mono);color:var(--ink2);text-decoration:none;overflow-wrap:anywhere}
+.src span{font-family:var(--sans);font-size:var(--fs-s)}
+.src:hover{color:var(--ink)}
+.src:hover code,.src:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* chapter 2 chart */
+.chart{margin-top:12px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font:500 13px var(--sans);fill:var(--ink2)}
+.chart .lab{font-weight:600;fill:var(--ink)}
+.chart .ann{font-weight:600;fill:var(--ink)}
+.chart .grid{stroke:var(--rule);stroke-width:1}
+.chart .axis{stroke:var(--ink);stroke-width:1}
+.chart .peak{stroke:var(--ink2);stroke-width:2;stroke-dasharray:6 4}
+.chart .dot{fill:var(--a)}
+.chart .dot:hover,.chart .dot:focus{stroke:var(--ink);stroke-width:2;outline:none}
+
+/* comparison tables */
+.facts{margin-top:48px;border-top:2px solid var(--rule2);max-width:960px}
+.facts .r{display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:32px;padding:12px 0;border-bottom:1px solid var(--rule);font-size:var(--fs-base)}
+.facts .r b{font-weight:600}
+.facts .h{font-size:var(--fs-s);color:var(--ink2)}
+.facts .r span{min-width:0;overflow-wrap:anywhere}
+.facts .n{font-variant-numeric:tabular-nums}
+@media (max-width:700px){.facts .r{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px}.facts .r b{grid-column:1/-1}.facts .r.h span:first-child{display:none}}
+
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px;margin-top:48px;max-width:1100px}
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr);gap:32px}}
+.cols h3{font:600 var(--fs-base) var(--sans);padding-bottom:8px;border-bottom:2px solid var(--rule2)}
+.cols h3 span{font-weight:400;color:var(--ink2)}
+.kmap{width:100%;border-collapse:collapse;font-size:var(--fs-s)}
+.kmap td{padding:8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+.kmap td + td{padding-left:12px}
+.kmap .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.kmap .nodes{display:block;margin-top:2px;color:var(--ink2)}
+.kmap .nodes code{color:var(--ink2)}
+.kmap .fused code.k{color:var(--a-text);font-weight:500}
+
+/* chapter 4 diagram */
+.qblock{margin-top:12px}
+.qblock svg{display:block;width:100%;height:auto}
+.qblock text{font:500 13px var(--sans);fill:var(--ink2)}
+.qblock .lab{font-weight:600;fill:var(--ink)}
+.qblock .mono{font:12px var(--mono);fill:var(--ink2)}
+
+/* method */
+.spec{margin:32px 0 0;border-top:2px solid var(--rule2);max-width:960px}
+.spec>div{display:grid;grid-template-columns:200px minmax(0,1fr);gap:32px;padding:16px 0;border-bottom:1px solid var(--rule)}
+@media (max-width:600px){.spec>div{grid-template-columns:minmax(0,1fr);gap:4px}}
+.spec dt{font-weight:600}
+.spec dd{max-width:36em;margin:0;color:var(--ink2)}
+.spec dd p + p{margin-top:8px}
+.spec a{text-underline-offset:4px;text-decoration-thickness:1px}
+
+footer{border-top:2px solid var(--rule2);padding-block:32px 64px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 48px;font-size:var(--fs-s);color:var(--ink2)}
+@media (max-width:760px){footer{grid-template-columns:minmax(0,1fr)}}
+footer p{max-width:32em}
+
+.tip{position:fixed;z-index:10;max-width:min(24em,calc(100vw - 32px));padding:8px 12px;background:var(--ink);color:var(--bg);font:500 var(--fs-s)/1.4 var(--sans);border-radius:2px;pointer-events:none}
+.tip[hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="index.html">One Request, Traced</a>
+    <nav aria-label="Pages"><a href="index.html">Compare</a><a href="tracers.html">Tracers and code</a><a href="llama-cpp-forward.html" aria-current="page">One forward pass</a></nav>
+  </header>
+
+  <section class="hero">
+    <h1>One forward pass</h1>
+    <p class="headline" id="headline"></p>
+    <p class="dek" id="dek"></p>
+    <div class="switch" id="model-switch"><span id="model-label">Model</span><div role="group" aria-labelledby="model-label"></div></div>
+    <figure>
+      <div class="fig-h"><h3>GPU time in one decode step</h3><p id="hero-sub"></p></div>
+      <div class="bars" id="hero-bars"></div>
+      <figcaption id="hero-cap"></figcaption>
+    </figure>
+    <ol class="qs" id="qs"></ol>
+  </section>
+
+  <section class="chapter" id="layer">
+    <div class="col">
+      <p class="num">1</p>
+      <h2>One layer, step by step</h2>
+      <p class="ans" id="layer-ans"></p>
+      <div class="switch" id="phase-switch"><span id="phase-label">Show</span><div role="group" aria-labelledby="phase-label"></div></div>
+    </div>
+    <div class="walk">
+      <nav class="strip" aria-label="Steps of the forward pass"><span class="h" id="strip-h"></span><ol id="strip"></ol></nav>
+      <div class="steps" id="steps"></div>
+    </div>
+  </section>
+
+  <section class="chapter" id="memory">
+    <div class="col">
+      <p class="num">2</p>
+      <h2>Memory sets the speed</h2>
+      <p class="ans" id="mem-ans"></p>
+      <figure>
+        <div class="fig-h"><h3>Each decode matrix multiply: bytes read and time</h3><p id="bw-sub"></p></div>
+        <div class="chart" id="bw-chart"></div>
+        <figcaption id="bw-cap"></figcaption>
+      </figure>
+      <div class="facts" id="mem-facts"></div>
+      <div class="prose" id="mem-prose" style="margin-top:32px"></div>
+    </div>
+  </section>
+
+  <section class="chapter" id="shapes">
+    <div class="col">
+      <p class="num">3</p>
+      <h2>One graph, two shapes</h2>
+      <p class="ans" id="shape-ans"></p>
+    </div>
+    <div class="facts" id="shape-facts"></div>
+    <div class="srcs" id="shape-srcs"></div>
+    <div class="cols" id="kmaps"></div>
+  </section>
+
+  <section class="chapter" id="quant">
+    <div class="col">
+      <p class="num">4</p>
+      <h2>How a 4-bit weight is stored</h2>
+      <p class="ans" id="quant-ans"></p>
+      <figure>
+        <div class="fig-h"><h3>One Q4_K block: 256 weights in 144 bytes</h3></div>
+        <div class="qblock" id="q4k"></div>
+        <figcaption id="q4k-cap"></figcaption>
+      </figure>
+      <div class="prose" id="quant-prose" style="margin-top:48px"></div>
+    </div>
+  </section>
+
+  <section class="chapter" id="method">
+    <div class="col">
+      <p class="num">5</p>
+      <h2>How this was measured</h2>
+    </div>
+    <dl class="spec" id="spec"></dl>
+  </section>
+
+  <footer>
+    <p>Learning notes, not affiliated with llama.cpp. Probably wrong in places; corrections welcome as issues.</p>
+    <p>Pinned to <a href="https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a">ggml-org/llama.cpp@2ca15f5</a>. Measured October 2026.</p>
+  </footer>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script id="measured" type="application/json">{"commit":"2ca15f5404760548c39e7b92bd43116a09414a1a","capture":"2026-10-07","gpu":"NVIDIA GeForce RTX 4090","peakGBps":1008,"promptTokens":41,"genTokens":64,"models":{"q4_k_m":{"label":"Q4_K_M","weightsBytes":4617396480,"embdMiB":281.8,"typeMix":{"output.weight":{"Q6_K":1},"output_norm.weight":{"F32":1},"rope_freqs.weight":{"F32":1},"token_embd.weight":{"Q4_K":1},"attn_k":{"Q4_K":32},"attn_norm":{"F32":32},"attn_output":{"Q4_K":32},"attn_q":{"Q4_K":32},"attn_v":{"Q6_K":16,"Q4_K":16},"ffn_down":{"Q6_K":16,"Q4_K":16},"ffn_gate":{"Q4_K":32},"ffn_norm":{"F32":32},"ffn_up":{"Q4_K":32}},"bench":{"pp":4005.7,"ppSd":632.5,"tg":154.2,"tgSd":1.4},"server":{"cache_n":0,"prompt_n":41,"prompt_ms":25.646,"prompt_per_token_ms":0.6255121951219512,"prompt_per_second":1598.6898541682913,"predicted_n":64,"predicted_ms":470.261,"predicted_per_token_ms":7.4644603174603175,"predicted_per_second":133.9681581079443},"nodes":998,"nLayer":32,"graph":{"prefill":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,32,41,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,8,41,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,41,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,41,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,41,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,41,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,41,1,1],"src1":"CUDA0#embd#0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,41,1,1],"src1":"ffn_up-0","s1":[14336,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,41,1,1],"out":[4096,41,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,41,1,1],"src1":"ffn_inp-0","s1":[4096,41,1,1],"out":[4096,41,1,1]}],"decode":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,32,1,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,8,1,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,1,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,1,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,1,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,1,1,1],"src1":"CUDA0#embd#0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,1,1,1],"src1":"ffn_up-0","s1":[14336,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,1,1,1],"out":[4096,1,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,1,1,1],"src1":"ffn_inp-0","s1":[4096,1,1,1],"out":[4096,1,1,1]}],"pre":[{"name":"embd","op":"GET_ROWS","type":"f32","src0":"token_embd.weight","s0":[4096,128256,1,1],"src1":"inp_tokens","s1":[41,1,1,1],"out":[4096,41,1,1]}],"post":[{"name":"norm","op":"RMS_NORM","type":"f32","src0":"l_out-31","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"result_norm","op":"MUL","type":"f32","src0":"norm","s0":[4096,1,1,1],"src1":"output_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"result_output","op":"MUL_MAT","type":"f32","src0":"output.weight","s0":[4096,128256,1,1],"src1":"result_norm","s1":[4096,1,1,1],"out":[128256,1,1,1]}]},"prefill":{"kernels":1022,"busyUs":9320.7,"wallUs":24250,"byOp":{"attn_norm":{"us":99.9,"share":0.0107,"kernels":32},"qkv":{"us":1711.5,"share":0.1836,"kernels":288,"weight_mb":448.5,"gb_per_s":274.8},"rope":{"us":122.9,"share":0.0132,"kernels":64},"kv_write":{"us":97,"share":0.0104,"kernels":64},"attention":{"us":452.5,"share":0.0485,"kernels":64},"o_proj":{"us":797.9,"share":0.0856,"kernels":128,"weight_mb":288,"gb_per_s":378.5},"ffn_norm":{"us":99,"share":0.0106,"kernels":32},"ffn_gate_up":{"us":3361,"share":0.3606,"kernels":219,"weight_mb":2016,"gb_per_s":629},"ffn_down":{"us":2117.7,"share":0.2272,"kernels":126,"weight_mb":1239,"gb_per_s":613.5},"out_trim":{"us":2.7,"share":0.0003,"kernels":2},"output_norm":{"us":3.1,"share":0.0003,"kernels":1},"lm_head":{"us":455.3,"share":0.0488,"kernels":2,"weight_mb":411,"gb_per_s":946.5}},"totalUs":9320.7,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.68,"grid":"41×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.86,"grid":"128×1×1"},{"op":"qkv","role":"q_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.62,"grid":"128×4×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.72,"grid":"1312×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":8.32,"grid":"128×1×1"},{"op":"qkv","role":"v_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":7.2,"grid":"128×1×1"},{"op":"qkv","role":"k_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.44,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.5,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":8.42,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.25,"grid":"128×1×1"},{"op":"o_proj","role":"o_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.62,"grid":"128×4×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.7,"grid":"656×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.07,"grid":"41×1×1"},{"op":"ffn_gate_up","role":"gate:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"ffn_gate_up","role":"gate","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":42.76,"grid":"128×1×1"},{"op":"ffn_gate_up","role":"gate:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.55,"grid":"128×4×1"},{"op":"ffn_gate_up","role":"up:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.41,"grid":"41×8×1"},{"op":"ffn_gate_up","role":"up","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":52.39,"grid":"128×1×1"},{"op":"ffn_gate_up","role":"up:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.46,"grid":"128×4×1"},{"op":"ffn_gate_up","role":"swiglu","kernel":"unary_gated_op_kernel\u003c&op_silu, float>","us":3.1,"grid":"2296×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.89,"grid":"41×28×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":72.68,"grid":"128×1×1"},{"op":"ffn_down","role":"down:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":3.58,"grid":"128×4×1"},{"op":"ffn_down","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":2.14,"grid":"656×1×1"}],"last":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.01,"grid":"41×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.7,"grid":"128×1×1"},{"op":"qkv","role":"q_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.58,"grid":"128×4×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.4,"grid":"1312×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":10.34,"grid":"128×1×1"},{"op":"qkv","role":"v_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":6.37,"grid":"128×4×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":7.78,"grid":"128×1×1"},{"op":"qkv","role":"k_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.44,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.63,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.34,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":12.22,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":18.47,"grid":"128×1×1"},{"op":"o_proj","role":"o_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.52,"grid":"128×4×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.25,"grid":"16×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.1,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"16×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":77.45,"grid":"14336×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"56×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 1, 0, 0>","us":56.74,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.1,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"16×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":454.15,"grid":"128256×1×1"}]},"decode":{"steps":63,"kernels":646,"busyMedianUs":6249.7,"busyMinUs":5800.1,"busyMaxUs":7929.8,"byOp":{"attn_norm":{"us":92.3,"share":0.0158,"kernels":32,"us_min":88.3,"us_max":254.1},"qkv":{"us":734.5,"share":0.1255,"kernels":192,"weight_mb":448.5,"gb_per_s":640.3,"us_min":720.8,"us_max":1955.9},"rope":{"us":71.4,"share":0.0122,"kernels":64,"us_min":67.1,"us_max":78.6},"kv_write":{"us":70.4,"share":0.012,"kernels":64,"us_min":66.6,"us_max":411},"attention":{"us":155.3,"share":0.0265,"kernels":64,"us_min":148.1,"us_max":602.6},"o_proj":{"us":398.9,"share":0.0682,"kernels":65,"weight_mb":288,"gb_per_s":757.1,"us_min":393.9,"us_max":966.7},"ffn_norm":{"us":92.8,"share":0.0159,"kernels":32,"us_min":88.4,"us_max":428.7},"ffn_gate_up":{"us":2312.8,"share":0.3952,"kernels":64,"weight_mb":2016,"gb_per_s":914,"us_min":2306.8,"us_max":3553.2},"ffn_down":{"us":1461.9,"share":0.2498,"kernels":64,"weight_mb":1239,"gb_per_s":888.7,"us_min":1455.7,"us_max":2885.9},"out_trim":{"us":2.5,"share":0.0004,"kernels":2,"us_min":2.3,"us_max":2.8},"output_norm":{"us":2.9,"share":0.0005,"kernels":1,"us_min":2.7,"us_max":3.1},"lm_head":{"us":456.3,"share":0.078,"kernels":2,"weight_mb":411,"gb_per_s":944.5,"us_min":455,"us_max":1040.4}},"totalUs":5851.9,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.91,"grid":"1×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 0, 0, 0>","us":11.27,"grid":"4096×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":1.18,"grid":"32×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":5.25,"grid":"1024×1×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 0, 0, 0>","us":4,"grid":"1024×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.06,"grid":"8×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.12,"grid":"4×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.12,"grid":"4×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_vec\u003c128, 1, F16, F16, 0>","us":3.62,"grid":"1×2×32"},{"op":"attention","role":"attention","kernel":"flash_attn_combine_results\u003c128>","us":1.28,"grid":"1×32×1"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_q8_1","us":1.02,"grid":"16×1×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":11.43,"grid":"4096×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.91,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":71.91,"grid":"14336×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_q8_1","us":1.09,"grid":"56×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 1, 0, 0>","us":52.68,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.31,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.22,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.88,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head:quant_act","kernel":"quantize_q8_1","us":1.02,"grid":"16×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":455.24,"grid":"128256×1×1"}],"identical":true},"matmulBw":[{"role":"q_proj","types":["Q4_K"],"mib":9,"us":11.27,"gbps":837.7},{"role":"v_proj","types":["Q6_K"],"mib":3.28,"us":5.25,"gbps":655.6},{"role":"k_proj","types":["Q4_K"],"mib":2.25,"us":4,"gbps":589.8},{"role":"o_proj","types":["Q4_K"],"mib":9,"us":11.43,"gbps":826},{"role":"gate_up","types":["Q4_K"],"mib":63,"us":71.91,"gbps":918.7},{"role":"down","types":["Q6_K"],"mib":45.94,"us":52.68,"gbps":914.4},{"role":"lm_head","types":["Q6_K"],"mib":410.98,"us":455.24,"gbps":946.6}]},"f16":{"label":"F16","weightsBytes":15010382080,"embdMiB":1002,"typeMix":{"rope_freqs.weight":{"F32":1},"token_embd.weight":{"F16":1},"attn_norm":{"F32":32},"ffn_down":{"F16":32},"ffn_gate":{"F16":32},"ffn_up":{"F16":32},"ffn_norm":{"F32":32},"attn_k":{"F16":32},"attn_output":{"F16":32},"attn_q":{"F16":32},"attn_v":{"F16":32},"output.weight":{"F16":1},"output_norm.weight":{"F32":1}},"bench":{"pp":1891.5,"ppSd":130.3,"tg":54.4,"tgSd":0.2},"server":{"cache_n":0,"prompt_n":41,"prompt_ms":100.886,"prompt_per_token_ms":2.460634146341463,"prompt_per_second":406.3993021826616,"predicted_n":64,"predicted_ms":1226.318,"predicted_per_token_ms":19.46536507936508,"predicted_per_second":51.37329795371184},"nodes":998,"nLayer":32,"graph":{"prefill":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,32,41,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,8,41,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,41,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,41,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,41,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,41,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,41,1,1],"src1":"CUDA0#embd#0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,41,1,1],"src1":"ffn_up-0","s1":[14336,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,41,1,1],"out":[4096,41,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,41,1,1],"src1":"ffn_inp-0","s1":[4096,41,1,1],"out":[4096,41,1,1]}],"decode":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,32,1,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,8,1,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,1,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,1,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,1,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,1,1,1],"src1":"CUDA0#embd#0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,1,1,1],"src1":"ffn_up-0","s1":[14336,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,1,1,1],"out":[4096,1,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,1,1,1],"src1":"ffn_inp-0","s1":[4096,1,1,1],"out":[4096,1,1,1]}],"pre":[{"name":"embd","op":"GET_ROWS","type":"f32","src0":"token_embd.weight","s0":[4096,128256,1,1],"src1":"inp_tokens","s1":[41,1,1,1],"out":[4096,41,1,1]}],"post":[{"name":"norm","op":"RMS_NORM","type":"f32","src0":"l_out-31","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"result_norm","op":"MUL","type":"f32","src0":"norm","s0":[4096,1,1,1],"src1":"output_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"result_output","op":"MUL_MAT","type":"f32","src0":"output.weight","s0":[4096,128256,1,1],"src1":"result_norm","s1":[4096,1,1,1],"out":[128256,1,1,1]}]},"prefill":{"kernels":1114,"busyUs":21503.9,"wallUs":99367.5,"byOp":{"attn_norm":{"us":98.3,"share":0.0046,"kernels":32},"qkv":{"us":2298.5,"share":0.1069,"kernels":352,"weight_mb":1536,"gb_per_s":700.7},"rope":{"us":121.3,"share":0.0056,"kernels":64},"kv_write":{"us":96.5,"share":0.0045,"kernels":64},"attention":{"us":357.2,"share":0.0166,"kernels":64},"o_proj":{"us":1428.5,"share":0.0664,"kernels":128,"weight_mb":1024,"gb_per_s":751.7},"ffn_norm":{"us":98.6,"share":0.0046,"kernels":32},"ffn_gate_up":{"us":10212.5,"share":0.4749,"kernels":218,"weight_mb":7168,"gb_per_s":736},"ffn_down":{"us":4580.1,"share":0.213,"kernels":156,"weight_mb":3584,"gb_per_s":820.5},"out_trim":{"us":2.8,"share":0.0001,"kernels":2},"output_norm":{"us":3.3,"share":0.0002,"kernels":1},"lm_head":{"us":2206.3,"share":0.1026,"kernels":1,"weight_mb":1002,"gb_per_s":476.2}},"totalUs":21503.9,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.36,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.76,"grid":"164×1×1"},{"op":"qkv","role":"q_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":50.69,"grid":"16×16×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.44,"grid":"164×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":3.07,"grid":"1312×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":2.08,"grid":"164×1×1"},{"op":"qkv","role":"v_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":18.72,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"qkv","role":"k_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":12.61,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.41,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.57,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":11.52,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"o_proj","role":"o_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":37.96,"grid":"16×16×1"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":2.27,"grid":"656×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.04,"grid":"41×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"ffn_gate_up","role":"gate","kernel":"ampere_h16816gemm_64x128_ldg8_stages_32x6_tn","us":138.54,"grid":"224×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":2.14,"grid":"574×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.86,"grid":"164×1×1"},{"op":"ffn_gate_up","role":"up","kernel":"ampere_h16816gemm_64x128_ldg8_stages_32x6_tn","us":136.33,"grid":"224×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":2.14,"grid":"574×1×1"},{"op":"ffn_gate_up","role":"swiglu","kernel":"unary_gated_op_kernel\u003c&op_silu, float>","us":3.94,"grid":"2296×1×1"},{"op":"ffn_down","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.57,"grid":"574×1×1"},{"op":"ffn_down","role":"down","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":136.08,"grid":"16×16×2"},{"op":"ffn_down","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":2.4,"grid":"128×3×1"},{"op":"ffn_down","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.09,"grid":"164×1×1"},{"op":"ffn_down","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.98,"grid":"656×1×1"}],"last":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.07,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"qkv","role":"q_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":38.05,"grid":"16×16×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.37,"grid":"1312×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"qkv","role":"v_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":11.52,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.19,"grid":"164×1×1"},{"op":"qkv","role":"k_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":11.62,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.38,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.47,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":8.32,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.27,"grid":"24×16×4"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"o_proj","role":"o_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":40.04,"grid":"16×16×1"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.44,"grid":"1×16×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.22,"grid":"16×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.14,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_f\u003c__half, float, 1, 256, 1, 0>","us":255.32,"grid":"14336×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":124.91,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.44,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.3,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":2206.32,"grid":"128256×1×1"}]},"decode":{"steps":63,"kernels":453,"busyMedianUs":17997.9,"busyMinUs":16894.7,"busyMaxUs":20222.1,"byOp":{"attn_norm":{"us":94.4,"share":0.0057,"kernels":32,"us_min":94.2,"us_max":341.2},"qkv":{"us":1820.5,"share":0.1105,"kernels":96,"weight_mb":1536,"gb_per_s":884.7,"us_min":1819.2,"us_max":3334.8},"rope":{"us":67.5,"share":0.0041,"kernels":64,"us_min":66.8,"us_max":78.3},"kv_write":{"us":67.6,"share":0.0041,"kernels":64,"us_min":67.1,"us_max":81.4},"attention":{"us":149.3,"share":0.0091,"kernels":64,"us_min":148.9,"us_max":340.3},"o_proj":{"us":1180.3,"share":0.0716,"kernels":33,"weight_mb":1024,"gb_per_s":909.7,"us_min":1179.8,"us_max":2195.5},"ffn_norm":{"us":88.9,"share":0.0054,"kernels":32,"us_min":88.6,"us_max":575.3},"ffn_gate_up":{"us":7926.7,"share":0.4809,"kernels":32,"weight_mb":7168,"gb_per_s":948.2,"us_min":7927.5,"us_max":10867.4},"ffn_down":{"us":3980,"share":0.2415,"kernels":32,"weight_mb":3584,"gb_per_s":944.2,"us_min":3980.5,"us_max":5557.7},"out_trim":{"us":2.5,"share":0.0002,"kernels":2,"us_min":2.5,"us_max":2.9},"output_norm":{"us":2.9,"share":0.0002,"kernels":1,"us_min":2.9,"us_max":3.3},"lm_head":{"us":1101,"share":0.0668,"kernels":1,"weight_mb":1002,"gb_per_s":954.3,"us_min":1100.2,"us_max":2308.5}},"totalUs":16481.7,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.82,"grid":"1×1×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":36.48,"grid":"4096×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":1.12,"grid":"32×1×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":10.24,"grid":"1024×1×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":10.24,"grid":"1024×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":0.99,"grid":"8×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.09,"grid":"4×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.02,"grid":"4×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_vec\u003c128, 1, F16, F16, 0>","us":3.52,"grid":"1×2×32"},{"op":"attention","role":"attention","kernel":"flash_attn_combine_results\u003c128>","us":1.22,"grid":"1×32×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":37.41,"grid":"4096×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.78,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_f\u003c__half, float, 1, 256, 1, 0>","us":247.8,"grid":"14336×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":124.52,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.25,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.94,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":1100.97,"grid":"128256×1×1"}],"identical":true},"matmulBw":[{"role":"q_proj","types":["F16"],"mib":32,"us":36.48,"gbps":919.7},{"role":"v_proj","types":["F16"],"mib":8,"us":10.24,"gbps":819.1},{"role":"k_proj","types":["F16"],"mib":8,"us":10.24,"gbps":819.1},{"role":"o_proj","types":["F16"],"mib":32,"us":37.41,"gbps":896.9},{"role":"gate_up","types":["F16"],"mib":224,"us":247.8,"gbps":947.9},{"role":"down","types":["F16"],"mib":112,"us":124.52,"gbps":943.1},{"role":"lm_head","types":["F16"],"mib":1002,"us":1100.97,"gbps":954.3}]}}}</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById('measured').textContent);
+const GH = `https://github.com/ggml-org/llama.cpp/blob/${D.commit}/`;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = (x, d = 0) => Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const ms = us => fmt(us / 1000, us >= 10000 ? 1 : 2) + ' ms';
+const usf = us => us >= 1000 ? ms(us) : fmt(us, us < 10 ? 1 : 0) + ' µs';
+const pct = x => x > 0 && x < 0.001 ? '<0.1%' : fmt(x * 100, x < 0.1 ? 1 : 0) + '%';
+const GB = b => fmt(b / 1e9, 1) + ' GB';
+const MiB = m => fmt(m, m < 10 ? 1 : 0) + ' MiB';
+const shape = s => s ? '[' + s.slice(0, s.length - s.slice().reverse().findIndex(x => x !== 1)).join(', ') + ']' : '';
+const ref = r => `<a class="src" href="${GH}${r.file}#L${r.line}"><code>${esc(r.file)}:${r.line}</code> <span>${esc(r.what)}</span></a>`;
+
+let model = 'q4_k_m';
+let phase = 'decode';
+const M = () => D.models[model];
+
+/* ---------- the steps of one forward pass (hand-written; numbers come from D) ---------- */
+// ops: which analyzer step groups this step owns (see inference/capture/analyze.py ROLE_OP)
+// nodes(n): which logical graph nodes of layer 0 belong to the step
+const STEPS = [
+  { id: 'inputs', title: 'Token ids become vectors', ops: [],
+    lead: () => [
+      `Each token id picks one row of <code>token_embd</code>: 4,096 numbers. This lookup runs on the CPU. llama.cpp keeps the input layer in host memory on purpose (${MiB(M().embdMiB)} here), because offloading it gains little.`,
+      `The scheduler then copies six small inputs to the GPU before every pass: the embeddings, the token positions, where each token's key and value go in the KV cache, the attention mask, and which rows need logits.`,
+    ],
+  },
+  { id: 'attn_norm', title: 'RMS norm', ops: ['attn_norm'],
+    nodes: n => n.name.startsWith('norm-') && n.idx < 3 || n.name.startsWith('attn_norm-'),
+    lead: () => [
+      `Each token's vector is divided by its root mean square, then multiplied by a learned weight per channel. Llama normalizes like this before attention and again before the feed-forward block.`,
+      `ggml builds two nodes, <code>RMS_NORM</code> and <code>MUL</code>. On CUDA they run as one kernel: one block of 1,024 threads per token row sums the squares, reduces them across the block, and writes the scaled, weighted row in the same pass.`,
+    ],
+    math: `y = x / √(mean(x²) + ε) × w, with ε = 10<sup>−5</sup> for Llama 3.1`,
+  },
+  { id: 'qkv', title: 'Query, key and value projections', ops: ['qkv'],
+    nodes: n => /^(Qcur|Kcur|Vcur)-/.test(n.name) && (n.op === 'MUL_MAT' || n.op === 'RESHAPE'),
+    lead: () => [
+      `Three matrix multiplies turn each normalized vector into a query (4,096 wide), a key and a value (1,024 wide each). Keys and values are narrower because Llama 3.1 uses grouped-query attention: 32 query heads of 128 channels share 8 key-value heads, 4 queries to each, which makes the KV cache four times smaller. The key and value heads are never copied out to 32; the attention kernel maps query head <i>h</i> to key-value head <i>h</i> / 4.`,
+      `The graph adds them in the order Q, V, K. A comment in the source says K goes last on purpose, so its rotation sits right before the cache write and the two can be fused. Step 5 shows why that fusion doesn't happen in this run.`,
+    ],
+    phaseNote: {
+      decode: () => model === 'f16'
+        ? `For one token each multiply is a matrix-vector product. <code>mul_mat_vec_f</code> reads the 16-bit weights directly, one block per output row.`
+        : `For one token each multiply is a matrix-vector product. A small kernel first converts the 4,096 activations to 8-bit integers (chapter 4 explains why), then <code>mul_mat_vec_q</code> runs one block per output row.`,
+      prefill: () => model === 'f16'
+        ? `For 41 tokens each multiply is a matrix-matrix product, handed to cuBLAS, which runs it on the tensor cores in 16-bit floats. Small kernels cast the activations to 16 bits before it and the results back to 32 after it.`
+        : `For 41 tokens each multiply is a matrix-matrix product on the tensor cores. <code>mul_mat_q</code> splits the work across 128 blocks, one per streaming multiprocessor, and a second, short kernel adds up the pieces of any output tile that was split between blocks.`,
+    },
+  },
+  { id: 'rope', title: 'Rotary position embedding', ops: ['rope'],
+    nodes: n => n.op === 'ROPE',
+    lead: () => [
+      `Position enters by rotation. Each pair of channels in a query or key head is rotated by an angle that grows with the token's position, at a different speed for each pair. A query-key dot product then depends on how far apart the two tokens are, not where they are.`,
+      `Llama uses the "normal" layout, which pairs adjacent channels (0 with 1, 2 with 3, and so on). Llama 3.1's long-context scaling is not computed at run time. The converter stores 64 divisors, one per pair, as <code>rope_freqs.weight</code>: 1 for the fast-turning pairs, 8 for the slowest, a blend in between. The kernel divides each angle by its divisor. One thread rotates one pair.`,
+    ],
+    math: `θ<sub>i</sub> = pos × 500,000<sup>−2i/128</sup> / f<sub>i</sub>, for i = 0 … 63<br>x′<sub>2i</sub> = x<sub>2i</sub> cos θ<sub>i</sub> − x<sub>2i+1</sub> sin θ<sub>i</sub>, x′<sub>2i+1</sub> = x<sub>2i</sub> sin θ<sub>i</sub> + x<sub>2i+1</sub> cos θ<sub>i</sub>`,
+  },
+  { id: 'kv_write', title: 'Write keys and values to the cache', ops: ['kv_write'],
+    nodes: n => n.op === 'SET_ROWS' || n.op === 'VIEW' && /^(Kcur|Vcur)-\d+ \(view\)$/.test(n.name),
+    lead: () => [
+      `The new keys and values are stored so later tokens can attend to them without recomputing them. <code>SET_ROWS</code> writes each token's 1,024-wide key and value rows, as 16-bit floats, into the cache cells chosen for this batch. Queries are not cached; each one is used once.`,
+      `With <code>-c 16384 -np 4</code> the cache is four streams of 4,096 cells, one per server slot, 2 GiB across the 32 layers. A row's index is stream × 4,096 + cell. Attention later reads only up to the highest used cell, rounded up to a multiple of 256: 256 cells for this whole reply, so every decode step has the same shape.`,
+      `llama.cpp has a kernel that rotates K and writes it into the cache in one go, and the source orders the nodes so it can apply. It doesn't fire here. With four streams the cache is first reshaped into one long table, and that reshape node lands between the rotation and the write, so the three-node pattern no longer matches. That is what the source says; a rerun with a unified cache (<code>-kvu</code>) would confirm it.`,
+    ],
+  },
+  { id: 'attention', title: 'Attention', ops: ['attention'],
+    nodes: n => n.op === 'FLASH_ATTN_EXT' || n.op === 'PERMUTE' || /^(Qcur-\d+ \(view\)|cache_[kv]_l\d+ \(view\)|kqv_out-)/.test(n.name) && n.op !== 'SET_ROWS',
+    lead: () => [
+      `Each query scores every cached key, a softmax turns the scores into weights, and the output is the weighted sum of the values. The mask is 0 for cells this token may see and −∞ for everything else: later positions, other conversations, and the empty padding cells up to 256.`,
+      `llama.cpp runs this as one flash-attention op. Scores for a block of keys are computed in registers, used straight away and dropped, so the score matrix is never written to memory. Three things persist per query row: the running maximum <i>m</i>, the running sum <i>l</i>, and a 128-wide accumulator. When a new block raises the maximum, the earlier work is rescaled, which keeps the softmax exact.`,
+    ],
+    math: `out = softmax(Q Kᵀ / √128 + mask) V<br>per block: m′ = max(m, max s), α = e<sup>m − m′</sup>, l = α l + Σ e<sup>s − m′</sup>, acc = α acc + Σ e<sup>s − m′</sup> v; at the end, out = acc / l`,
+    phaseNote: {
+      decode: () => `For one token the vector kernel runs a 1 × 2 × 32 grid: one block per query head, with the 256 cells split into two halves that run in parallel. <code>flash_attn_combine_results</code> then merges the two halves with the same max-and-rescale rule. Each of the four heads that share a key-value head reads it separately.`,
+      prefill: () => `For 41 tokens the tensor-core kernel packs the four query heads that share a key-value head into one tile of 16 tokens × 4 heads, so each block of keys and values is loaded once for all four. Its 96 blocks are 24 output tiles × 4 chunks of 64 cells; a fix-up kernel merges the chunks of each tile.`,
+    },
+  },
+  { id: 'o_proj', title: 'Output projection and residual add', ops: ['o_proj'],
+    nodes: n => /^attn_out-/.test(n.name) || /^ffn_inp-/.test(n.name),
+    lead: () => [
+      `The 32 heads' outputs sit side by side in one 4,096-wide vector. A matrix multiply by <code>attn_output</code> mixes them, and the result is added to the vector that entered the layer: the residual connection.`,
+    ],
+    phaseNote: {
+      decode: () => `For one token the add has no kernel of its own: the matrix-vector kernel adds the residual as it writes each output. The one exception is the last layer, where the row trim of step 11 sits between the multiply and the add.`,
+      prefill: () => `For the prompt the add is a separate small kernel. CUDA fuses a matrix multiply with what follows only when the output is a single row.`,
+    },
+  },
+  { id: 'ffn_norm', title: 'RMS norm, again', ops: ['ffn_norm'],
+    nodes: n => n.name.startsWith('norm-') && n.idx > 3 || n.name.startsWith('ffn_norm-'),
+    lead: () => [`The same normalization as step 2, with its own weights, before the feed-forward block.`],
+  },
+  { id: 'ffn_gate_up', title: 'Gate, up and SwiGLU', ops: ['ffn_gate_up'],
+    nodes: n => /^ffn_(gate|up|swiglu)-/.test(n.name),
+    lead: () => [
+      `The feed-forward block widens each vector from 4,096 to 14,336 numbers and back. Two matrices read the same input, <code>ffn_gate</code> and <code>ffn_up</code>. SwiGLU passes the gate through SiLU and multiplies it by the up result, element by element.`,
+    ],
+    phaseNote: {
+      decode: () => `For one token all three are one kernel. It reads both matrices, computes the gate and up dot products from the same activations, and applies SiLU(gate) × up as it writes each of the 14,336 results. That one kernel is the largest share of the step.`,
+      prefill: () => `For the prompt they are three kernels: two matrix multiplies, then a separate SwiGLU over the 14,336 × 41 results.`,
+    },
+    math: `h = SiLU(x W<sub>gate</sub>) ⊙ (x W<sub>up</sub>), with SiLU(z) = z / (1 + e<sup>−z</sup>)`,
+  },
+  { id: 'ffn_down', title: 'Down projection and residual add', ops: ['ffn_down'],
+    nodes: n => /^ffn_out-/.test(n.name) || /^l_out-/.test(n.name),
+    lead: () => [
+      `<code>ffn_down</code> brings the 14,336 numbers back to 4,096, and the result is added to the residual stream. That vector is the layer's output and the next layer's input.`,
+    ],
+    phaseNote: {
+      decode: () => `For one token the residual add is folded into the matrix-vector kernel, as in step 7.`,
+      prefill: () => `For the prompt the residual add is a separate kernel, as in step 7.`,
+    },
+  },
+  { id: 'repeat', title: 'Thirty-two layers, then a trim', ops: ['out_trim'],
+    lead: () => [
+      `Steps 2 to 10 run ${M().nLayer} times, each layer with its own weights. In the last layer, once attention is done, <code>GET_ROWS</code> keeps only the rows that need logits. A chat reply needs them only for the final prompt token, so the last feed-forward block and the output head work on one row even in the prompt pass.`,
+    ],
+  },
+  { id: 'head', title: 'Output head', ops: ['output_norm', 'lm_head'],
+    lead: () => [
+      `A last RMS norm, then one matrix multiply by <code>output.weight</code> turns the 4,096 numbers into 128,256 scores, one per vocabulary token. It is the largest matrix in the model and the longest kernel of the step.`,
+      `The scores (128,256 × 4 bytes) are copied back to the CPU, where the sampler picks the next token. The <a href="llama-cpp.html">request tracer</a> follows that part.`,
+    ],
+  },
+];
+
+/* ---------- source references at the pinned commit ----------
+   Each is {file, line, check, what}. `check` is text on that line (or within 3 lines);
+   inference/capture/check-page-refs.mjs verifies every one against the commit. */
+const REFS = {
+  inputs: [
+    { file: 'src/llama-graph.cpp', line: 2405, check: 'ggml_get_rows(ctx0, tok_embd, inp->tokens)', what: 'the embedding lookup is a GET_ROWS on token_embd' },
+    { file: 'src/llama-model.cpp', line: 1606, check: 'there is very little benefit to offloading the input layer', what: 'the input layer always stays on the CPU' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 5736, check: 'case GGML_OP_GET_ROWS:', what: 'CUDA never asks to take GET_ROWS over from the CPU' },
+    { file: 'ggml/src/ggml-backend.cpp', line: 1828, check: 'for (int input_id = 0; input_id < split->n_inputs; input_id++) {', what: 'each split\'s inputs are copied to its device before it runs' },
+  ],
+  attn_norm: [
+    { file: 'src/llama-graph.cpp', line: 1609, check: 'ggml_rms_norm(ctx0, cur, hparams.f_norm_rms_eps)', what: 'build_norm: RMS_NORM, then MUL by the weight' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4240, check: '{ GGML_OP_RMS_NORM, GGML_OP_MUL }, {}', what: 'the two ops are fused into one kernel' },
+    { file: 'ggml/src/ggml-cuda/norm.cu', line: 135, check: 'tmp += xi * xi;', what: 'each thread sums squares over its share of the row' },
+    { file: 'ggml/src/ggml-cuda/norm.cu', line: 143, check: 'rsqrtf(mean + eps)', what: 'one over the root mean square' },
+    { file: 'ggml/src/ggml-cuda/norm.cu', line: 152, check: 'scale * x[col] * mul[mul_col]', what: 'normalize and apply the weight in the same pass' },
+  ],
+  qkv: [
+    { file: 'src/llama-graph.cpp', line: 1707, check: 'Qcur = build_lora_mm(layer.wq, cur, layer.wq_s);', what: 'the query projection (key and value follow at :1721 and :1735)' },
+    { file: 'src/llama-graph.cpp', line: 1751, check: 'Kcur = ggml_reshape_3d(ctx0, Kcur, n_embd_head_k, n_head_k, n_tokens);', what: 'keys reshaped to 8 heads of 128' },
+    { file: 'src/llama-graph.cpp', line: 2898, check: 'expand k later to enable rope fusion', what: 'why K is added to the graph last' },
+    { file: 'ggml/src/ggml-cuda/fattn-vec.cuh', line: 110, check: 'K += nb13*sequence + nb12*(head / gqa_ratio);', what: 'query head h reads key-value head h / 4' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cuh', line: 3, check: 'MMVQ_MAX_BATCH_SIZE', what: 'matrix-vector kernels for batches of up to 8 tokens' },
+  ],
+  rope: [
+    { file: 'src/llama-model.cpp', line: 3111, check: 'return LLAMA_ROPE_TYPE_NORM;', what: 'Llama uses the adjacent-pair layout' },
+    { file: 'conversion/llama.py', line: 324, check: 'rope_factors.append(1 / ((1 - smooth) / factor + smooth))', what: 'the converter precomputes the Llama 3.1 divisors' },
+    { file: 'src/models/llama.cpp', line: 140, check: 'ggml_tensor * rope_factors = model.get_rope_factors(cparams, il);', what: 'the divisors are passed to every rope' },
+    { file: 'ggml/src/ggml-cuda/rope.cu', line: 114, check: 'rope_yarn<forward>(theta_base/freq_factor, freq_scale', what: 'each angle divided by its divisor' },
+    { file: 'ggml/src/ggml-cuda/rope.cu', line: 119, check: 'store_coaelsced(x0 * cos_theta - x1 * sin_theta, x0 * sin_theta + x1 * cos_theta);', what: 'the rotation of one pair' },
+  ],
+  kv_write: [
+    { file: 'src/llama-kv-cache.cpp', line: 1360, check: 'return ggml_set_rows(ctx, k, k_cur, k_idxs);', what: 'keys written into their cells' },
+    { file: 'src/llama-kv-cache.cpp', line: 1499, check: 'data[s*sinfo.size() + i] = offs + sinfo.idxs[s][i];', what: 'row index = stream offset + cell' },
+    { file: 'src/llama-kv-cache.cpp', line: 1270, check: 'GGML_PAD(cells.used_max_p1(), n_pad_cur)', what: 'attention reads the used cells, padded to 256' },
+    { file: 'src/llama-kv-cache.cpp', line: 1356, check: 'k = ggml_reshape_2d(ctx, k, n_embd_gqa, kv_size*n_stream);', what: 'with several streams the cache is reshaped first' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 3634, check: '{ GGML_OP_ROPE, GGML_OP_VIEW, GGML_OP_SET_ROWS }', what: 'the fusion needs these three nodes back to back' },
+  ],
+  attention: [
+    { file: 'src/llama-graph.cpp', line: 2664, check: 'ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale', what: 'one fused flash-attention op' },
+    { file: 'src/llama-kv-cache.cpp', line: 1678, check: 'if (p0 > p1) {', what: 'the mask hides later positions' },
+    { file: 'ggml/src/ggml-cuda/fattn.cu', line: 647, check: 'return BEST_FATTN_KERNEL_VEC;', what: 'one token on Ada: the vector kernel' },
+    { file: 'ggml/src/ggml-cuda/fattn.cu', line: 664, check: 'return BEST_FATTN_KERNEL_MMA_F16;', what: 'otherwise the tensor-core kernel' },
+    { file: 'ggml/src/ggml-cuda/fattn-vec.cuh', line: 298, check: 'const float KQ_max_scale = expf(KQ_max[j] - KQ_max_new[j]);', what: 'the rescale factor α when the maximum grows' },
+    { file: 'ggml/src/ggml-cuda/fattn-common.cuh', line: 977, check: 'dst[tid] = VKQ_numerator / VKQ_denominator;', what: 'combine: merge the parallel halves and divide by l' },
+  ],
+  o_proj: [
+    { file: 'src/models/llama.cpp', line: 178, check: 'ggml_add(ctx0, cur, inpSA)', what: 'the residual add after attention' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4164, check: '// mul_mat + add', what: 'a matmul followed by an add becomes one kernel' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cu', line: 814, check: 'result += x_biases[j];', what: 'the add happens as the matmul writes its result' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 1815, check: 'tensor->op == GGML_OP_MUL_MAT && dst->ne[1] != 1', what: 'matmul fusion only for a single output row, so not in the prompt pass' },
+  ],
+  ffn_gate_up: [
+    { file: 'src/llama-graph.cpp', line: 1804, check: 'build_lora_mm(up, cur)', what: 'the up projection' },
+    { file: 'src/llama-graph.cpp', line: 1826, check: 'cur = build_lora_mm(gate, cur);', what: 'the gate projection, on the same input' },
+    { file: 'src/llama-graph.cpp', line: 1869, check: 'ggml_swiglu_split(ctx0, cur, tmp)', what: 'SwiGLU as one GLU op' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4027, check: '{ op, op, GGML_OP_GLU }', what: 'gate, up and GLU fused into one matrix-vector kernel' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cu', line: 823, check: 'result *= ggml_cuda_op_silu_single(gate_value);', what: 'SiLU of the gate applied as the result is written' },
+  ],
+  ffn_down: [
+    { file: 'src/llama-graph.cpp', line: 1944, check: 'cur = build_lora_mm(down, cur);', what: 'the down projection' },
+    { file: 'src/models/llama.cpp', line: 220, check: 'cur = ggml_add(ctx0, cur, ffn_inp);', what: 'the second residual add, fused into the down matmul for one token' },
+  ],
+  repeat: [
+    { file: 'src/models/llama.cpp', line: 174, check: 'il == n_layer - 1 && inp_out_ids', what: 'in the last layer, keep only the rows that need logits' },
+    { file: 'tools/server/server-context.cpp', line: 3795, check: 'batch.set_output(batch.size() - 1, true);', what: 'the server asks for logits for the last prompt token only' },
+  ],
+  head: [
+    { file: 'src/models/llama.cpp', line: 240, check: 'build_lora_mm(model.output, cur, model.output_s)', what: 'the output head matmul' },
+    { file: 'src/llama-context.cpp', line: 1948, check: 'ggml_backend_tensor_get_async(backend_res, t_logits, logits_out', what: 'logits copied back to host memory' },
+  ],
+  quant: [
+    { file: 'ggml/src/ggml-common.h', line: 326, check: 'Effectively 4.5 bits per weight', what: 'the Q4_K block: 8 groups of 32, 144 bytes' },
+    { file: 'ggml/src/ggml-quants.c', line: 1547, check: '*y++ = d1 * (q[l] & 0xF) - m1;', what: 'rebuilding a weight: scale times q, minus the minimum' },
+    { file: 'ggml/src/ggml-cuda/quantize.cu', line: 100, check: 'y[ib].ds = make_half2(d, sum);', what: 'Q8_1 keeps a scale and a sum for every 32 activations' },
+    { file: 'ggml/src/ggml-cuda/vecdotq.cuh', line: 529, check: 'return dm4f.x*sumf_d - dm4f.y*sumf_m;', what: 'decode: integer sums, then the scale term minus the minimum term' },
+    { file: 'ggml/src/ggml-cuda/common.cuh', line: 741, check: 'return __dp4a(a, b, c);', what: 'four 8-bit multiply-adds in one instruction' },
+    { file: 'ggml/src/ggml-cuda/mmq.cu', line: 371, check: 'if (turing_mma_available(cc)) {', what: 'prompt pass: tensor-core MMQ on Turing and newer' },
+    { file: 'ggml/src/ggml-cuda/mma.cuh', line: 1084, check: 'mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32', what: 'the 8-bit integer tensor-core instruction' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 1895, check: 'ggml_cuda_should_use_mmvf(src0->type, cc, src0->ne, src0->nb, ne11)', what: 'the matmul dispatcher tries each kernel family in turn' },
+  ],
+  graphs: [
+    { file: 'src/llama-context.cpp', line: 1412, check: 'res->can_reuse(gparams)', what: 'llama.cpp reuses the previous ggml graph when the batch has the same shape' },
+    { file: 'src/llama-kv-cache.cpp', line: 1265, check: 'std::max(n_pad, 256u)', what: 'the attended span is padded to 256 cells so decode graphs stay identical' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4536, check: '// Warmup: need at least 2 calls with no property change', what: 'a CUDA graph is captured after two identical calls, then replayed' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4490, check: 'cudaGraphLaunch(graph->instance, cuda_ctx->stream())', what: 'one launch replays every kernel of the step' },
+  ],
+};
+
+/* ---------- helpers over the measured data ---------- */
+function opsUs(m, ph, ops) {
+  const b = m[ph].byOp; let us = 0, min = 0, max = 0;
+  for (const o of ops) if (b[o]) { us += b[o].us; min += b[o].us_min ?? b[o].us; max += b[o].us_max ?? b[o].us; }
+  return { us, min, max, share: us / m[ph].totalUs };
+}
+function layerKernels(m, ph, ops) {
+  const rows = [...m[ph].layer0];
+  return rows.filter(k => ops.includes(k.op));
+}
+function tailKernels(m, ph, ops) { return m[ph].tail.filter(k => ops.includes(k.op)); }
+function graphNodes(m, ph) { return m.graph[ph].map((n, idx) => ({ ...n, idx })); }
+const bytesPerToken = m => m.weightsBytes;
+
+/* ---------- hero ---------- */
+const HERO_GROUPS = [
+  { label: 'Gate, up and SwiGLU', ops: ['ffn_gate_up'] },
+  { label: 'Down projection', ops: ['ffn_down'] },
+  { label: 'Q, K and V projections', ops: ['qkv'] },
+  { label: 'Output head', ops: ['output_norm', 'out_trim', 'lm_head'] },
+  { label: 'Attention output', ops: ['o_proj'] },
+  { label: 'Attention', ops: ['attention'] },
+  { label: 'RMS norms', ops: ['attn_norm', 'ffn_norm'] },
+  { label: 'RoPE', ops: ['rope'] },
+  { label: 'KV cache writes', ops: ['kv_write'] },
+];
+
+function renderBars(el, rows, total) {
+  const max = Math.max(...rows.map(r => r.us));
+  el.innerHTML = rows.map(r => `<div class="bar" tabindex="0" data-tip="${esc(r.tip || '')}">
+      <span class="lbl">${esc(r.label)}</span>
+      <span class="track" aria-hidden="true"><i style="width:${(r.us / max * 100).toFixed(1)}%"></i></span>
+      <span class="v"><b>${usf(r.us)}</b> ${pct(r.us / total)}</span></div>`).join('');
+}
+
+function renderHero() {
+  const m = M(), dec = m.decode;
+  const gb = GB(m.weightsBytes);
+  $('headline').textContent = `To produce each new token, the GPU reads every weight of the model once: ${gb} at ${m.label}. Memory speed, not arithmetic, sets the pace.`;
+  $('dek').innerHTML = `The tracer's request, “Why is the sky blue?”, followed below the server: every graph node and every CUDA kernel of one prompt pass and one decode step of Llama 3.1 8B Instruct, timed with Nsight Systems on one ${esc(D.gpu)} at llama.cpp <a href="https://github.com/ggml-org/llama.cpp/tree/${D.commit}">${D.commit.slice(0, 7)}</a>.`;
+  $('hero-sub').textContent = `Llama 3.1 8B Instruct, ${m.label}, median of ${dec.steps} steps`;
+  const rows = HERO_GROUPS.map(g => {
+    const t = opsUs(m, 'decode', g.ops);
+    return { label: g.label, us: t.us, tip: `${g.label}: ${usf(t.us)} typical, ${usf(t.min)} to ${usf(t.max)} across the ${dec.steps} steps` };
+  }).sort((a, b) => b.us - a.us);
+  renderBars($('hero-bars'), rows, dec.totalUs);
+  const ffn = opsUs(m, 'decode', ['ffn_gate_up', 'ffn_down']).share;
+  $('hero-cap').textContent = `All ${m.nLayer} layers and the output head, summed. A typical step keeps the GPU busy for ${ms(dec.totalUs)}; across the ${dec.steps} steps of the reply, the busy time ranged from ${ms(dec.busyMinUs)} to ${ms(dec.busyMaxUs)}. The feed-forward block is ${pct(ffn)} of it; attention is ${pct(opsUs(m, 'decode', ['attention']).share)} at this context length.`;
+
+  const ceiling = D.peakGBps * 1e9 / m.weightsBytes;
+  const qs = [
+    { href: '#memory', stat: gb, unit: 'read for every token', q: 'What limits the speed?',
+      a: `Memory. Each decode step streams all the weights once, and the large matrix multiplies run at ${fmt(Math.min(...m.matmulBw.filter(x => x.mib > 40).map(x => x.gbps)))} to ${fmt(Math.max(...m.matmulBw.map(x => x.gbps)))} GB/s, close to the card's ${fmt(D.peakGBps)} GB/s.` },
+    { href: '#layer', stat: pct(ffn), unit: 'of decode time in the feed-forward block', q: 'Where does the time go?',
+      a: `Into the gate, up and down projections, the three largest matrices in each layer. The output head adds ${pct(opsUs(m, 'decode', ['lm_head']).share)}.` },
+    { href: '#shapes', stat: `${fmt(m.nodes)} to ${fmt(dec.kernels)}`, unit: 'graph nodes to CUDA kernels', q: 'What actually runs on the GPU?',
+      a: `ggml builds ${fmt(m.nodes)} nodes per pass. For one new token, CUDA fuses neighbours and skips views, launching ${fmt(dec.kernels)} kernels as one replayed CUDA graph.` },
+    { href: '#shapes', stat: `${D.promptTokens} or 1`, unit: 'tokens per pass', q: 'Why is the prompt pass different?',
+      a: `It is the same graph with 41 rows instead of 1, so llama.cpp picks matrix-matrix kernels on tensor cores instead of matrix-vector kernels.` },
+  ];
+  $('qs').innerHTML = qs.map(x => `<li><a href="${x.href}"><span class="sw"><span class="stat">${esc(x.stat)}</span><span class="unit">${esc(x.unit)}</span></span><span class="q"><b>${esc(x.q)}</b><span class="tt">${esc(x.a)}</span></span></a></li>`).join('');
+}
+
+/* ---------- chapter 1 ---------- */
+function stepNodes(st, m, ph) {
+  if (!st.nodes) return [];
+  return graphNodes(m, ph).filter(n => st.nodes(n));
+}
+function nodeTable(nodes) {
+  if (!nodes.length) return '';
+  return `<table class="rows"><thead><tr><th>Node</th><th>Op</th><th class="r">Output</th></tr></thead><tbody>` +
+    nodes.map(n => {
+      const view = ['RESHAPE', 'VIEW', 'PERMUTE'].includes(n.op);
+      return `<tr class="${view ? 'dim' : ''}"><td><code>${esc(n.name)}</code></td><td>${esc(n.op)}</td><td class="r"><code>${shape(n.out)}</code></td></tr>`;
+    }).join('') + `</tbody></table>`;
+}
+function kernelTable(ks) {
+  if (!ks.length) return '<p class="note">No GPU kernel.</p>';
+  return `<table class="rows"><thead><tr><th>Kernel</th><th class="r">Grid</th><th class="r">Time</th></tr></thead><tbody>` +
+    ks.map(k => `<tr><td><code>${esc(k.kernel)}</code></td><td class="r">${esc(k.grid)}</td><td class="r">${usf(k.us)}</td></tr>`).join('') + `</tbody></table>`;
+}
+
+const PHASES = { prefill: 'Prompt pass (41 tokens)', decode: 'Each new token (1 token)' };
+
+function renderLayer() {
+  const m = M(), ph = phase, P = m[ph];
+  $('layer-ans').textContent = ph === 'decode'
+    ? `A decode step pushes one token's vector through ${m.nLayer} identical layers, then the output head. Each step below lists the graph nodes ggml builds for layer 0 and the CUDA kernels that run them, with their measured time.`
+    : `The prompt pass pushes all ${D.promptTokens} prompt tokens through the same ${m.nLayer} layers at once, as a ${D.promptTokens}-row batch. Each step lists the graph nodes ggml builds for layer 0 and the CUDA kernels that run them, with their measured time.`;
+  $('strip-h').textContent = `${m.label}, ${ph === 'decode' ? 'one decode step' : 'the prompt pass'}`;
+  $('strip').innerHTML = STEPS.map((st, i) => {
+    const t = opsUs(m, ph, st.ops);
+    return `<li><a href="#s-${st.id}" data-step="${st.id}"><span class="n">${i + 1}</span><span class="t">${esc(st.title)}</span><span class="pc">${st.ops.length ? pct(t.share) : ''}</span>${st.ops.length ? `<span class="mini" aria-hidden="true"><i style="width:${Math.max(t.share * 100, 0.5).toFixed(1)}%"></i></span>` : ''}</a></li>`;
+  }).join('');
+
+  $('steps').innerHTML = STEPS.map((st, i) => {
+    const t = opsUs(m, ph, st.ops);
+    let nodes = stepNodes(st, m, ph);
+    let ks;
+    if (st.id === 'repeat') ks = m[ph].tail.filter(k => k.op === 'out_trim');
+    else if (st.id === 'head') ks = tailKernels(m, ph, st.ops);
+    else ks = layerKernels(m, ph, st.ops);
+    if (st.id === 'inputs') nodes = m.graph.pre;
+    if (st.id === 'head') nodes = m.graph.post;
+    const per = ['head', 'repeat', 'inputs'].includes(st.id) ? '' : ', layer 0';
+    const cost = st.ops.length
+      ? `<p class="cost">${st.id === 'repeat' ? 'Row trim' : 'All ' + (st.id === 'head' ? 'of it' : m.nLayer + ' layers')}: <b>${usf(t.us)}</b>, ${pct(t.share)} of ${ph === 'decode' ? 'a decode step' : 'the prompt pass'}${ph === 'decode' && t.max > t.us * 1.05 ? ` (${usf(t.min)} to ${usf(t.max)} across the ${m.decode.steps} steps)` : ''}.</p>`
+      : `<p class="cost">On the GPU: six host-to-device copies, no kernel.</p>`;
+    return `<section class="stp" id="s-${st.id}" aria-labelledby="h-${st.id}">
+      <h3 id="h-${st.id}"><span class="n">${i + 1}</span>${esc(st.title)}</h3>
+      ${st.lead().map(p => `<p class="lead">${p}</p>`).join('')}
+      ${st.math ? `<p class="math">${st.math}</p>` : ''}
+      ${(st.phaseNote && st.phaseNote[ph]) ? `<p class="lead">${st.phaseNote[ph](m)}</p>` : ''}
+      ${cost}
+      <div class="two">
+        <div><h4>Graph nodes <span>${per ? 'layer 0' : ''}</span></h4>${nodeTable(nodes) || '<p class="note">None in this part of the graph.</p>'}</div>
+        <div><h4>CUDA kernels <span>${per ? 'layer 0, ' : ''}${model === 'q4_k_m' ? 'Q4_K_M' : 'F16'}</span></h4>${kernelTable(ks)}</div>
+      </div>
+      ${(REFS[st.id] || []).length ? `<div class="srcs">${REFS[st.id].map(ref).join('')}</div>` : ''}
+    </section>`;
+  }).join('');
+  watchSteps();
+}
+
+let observer;
+function watchSteps() {
+  if (observer) observer.disconnect();
+  const links = new Map([...document.querySelectorAll('.strip a')].map(a => [a.dataset.step, a]));
+  observer = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting) {
+      links.forEach(a => a.classList.remove('on'));
+      const a = links.get(e.target.id.slice(2));
+      if (a) a.classList.add('on');
+    }
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  document.querySelectorAll('.stp').forEach(s => observer.observe(s));
+}
+
+/* ---------- chapter 2: bytes vs time ---------- */
+const ROLE_LABEL = { q_proj: 'Q', k_proj: 'K', v_proj: 'V', o_proj: 'Attention output', gate_up: 'Gate and up', gate: 'Gate', up: 'Up', down: 'Down', lm_head: 'Output head' };
+
+function renderMemory() {
+  const m = M(), dec = m.decode;
+  const minMs = m.weightsBytes / (D.peakGBps * 1e9) * 1e3;
+  $('mem-ans').textContent = `In a decode step each weight is read once and used for one multiply-add. The GPU can do far more arithmetic than that per byte, so the step lasts as long as memory takes to deliver ${GB(m.weightsBytes)}. At the card's ${fmt(D.peakGBps)} GB/s that is at least ${fmt(minMs, 2)} ms; the measured step keeps the GPU busy for ${ms(dec.totalUs)}.`;
+  $('bw-sub').textContent = `${m.label}, layer 0 and the output head, median of ${dec.steps} steps`;
+  drawBandwidth($('bw-chart'), m);
+  const head = m.matmulBw.find(x => x.role === 'lm_head');
+  const small = ['k_proj', 'v_proj'].map(r => m.matmulBw.find(x => x.role === r));
+  $('bw-cap').textContent = `Both axes are logarithmic. Points on the dashed line would move bytes at the card's peak. The output head reaches ${fmt(head.gbps)} GB/s, ${pct(head.gbps / D.peakGBps)} of peak; the key and value projections, at ${small.map(x => MiB(x.mib)).join(' and ')}, reach only ${small.map(x => fmt(x.gbps)).join(' and ')} GB/s.`;
+
+  const a = D.models.q4_k_m, b = D.models.f16;
+  const row = (label, f) => `<div class="r"><b>${label}</b><span class="n">${f(a)}</span><span class="n">${f(b)}</span></div>`;
+  $('mem-facts').innerHTML = `<div class="r h"><span></span><span>Q4_K_M</span><span>F16</span></div>` +
+    row('Weights read per token', x => GB(x.weightsBytes)) +
+    row('GPU time per decode step', x => ms(x.decode.totalUs)) +
+    row('Effective bandwidth', x => fmt(x.weightsBytes / (x.decode.totalUs * 1e3)) + ' GB/s') +
+    row('Ceiling at 1,008 GB/s', x => fmt(D.peakGBps * 1e9 / x.weightsBytes) + ' tokens/s') +
+    row('Measured, no profiler', x => fmt(x.bench.tg, 1) + ' tokens/s');
+  $('mem-prose').innerHTML = [
+    `F16 reads ${fmt(b.weightsBytes / a.weightsBytes, 2)} times the bytes of Q4_K_M and takes ${fmt(b.decode.totalUs / a.decode.totalUs, 2)} times as long per step. Quantization buys speed mostly by moving fewer bytes, not by doing less arithmetic.`,
+    `The measured rate, from llama-bench without the profiler, is below the ceiling for two reasons visible in the trace: small kernels (norms, RoPE, the key and value projections) never reach full bandwidth, and between steps the CPU samples a token and prepares the next batch while the GPU waits.`,
+  ].map(p => `<p>${p}</p>`).join('');
+}
+
+function drawBandwidth(el, m) {
+  const narrow = el.clientWidth < 600;
+  const W = narrow ? 380 : 760, H = narrow ? 320 : 380, L = narrow ? 52 : 64, R = narrow ? 16 : 24, T = 24, B = 48;
+  const pts = m.matmulBw.map(p => ({ ...p, label: ROLE_LABEL[p.role] || p.role }));
+  const xs = pts.map(p => p.mib), ys = pts.map(p => p.us);
+  const x0 = Math.log10(Math.min(...xs) / 1.6), x1 = Math.log10(Math.max(...xs) * 1.6);
+  const y0 = Math.log10(Math.min(...ys) / 1.6), y1 = Math.log10(Math.max(...ys) * 1.6);
+  const X = v => L + (Math.log10(v) - x0) / (x1 - x0) * (W - L - R);
+  const Y = v => H - B - (Math.log10(v) - y0) / (y1 - y0) * (H - T - B);
+  const decades = (a, b) => { const out = []; for (let k = Math.ceil(a); k <= Math.floor(b); k++) out.push(10 ** k); return out; };
+  const xt = decades(x0, x1), yt = decades(y0, y1).slice(-4);
+  // the peak line: time (µs) = bytes / peak; MiB * 2^20 / (GB/s * 1e3) = µs
+  const peakUs = mib => mib * 1048576 / (D.peakGBps * 1e3);
+  const lx0 = 10 ** x0, lx1 = 10 ** x1;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Log-log chart of bytes read against kernel time for each decode matrix multiply in layer 0 and the output head; the points sit close to the line for the card's peak bandwidth.">`;
+  for (const v of yt) s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end">${v >= 1000 ? fmt(v / 1000) + ' ms' : fmt(v) + ' µs'}</text>`;
+  s += `<line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`;
+  for (const v of xt) s += `<text x="${X(v)}" y="${H - B + 20}" text-anchor="middle">${fmt(v)} MiB</text>`;
+  s += `<text x="${W - R}" y="${H - 8}" text-anchor="end">weights read</text>`;
+  const clip = `bwclip${narrow ? 'n' : 'w'}`;
+  s += `<defs><clipPath id="${clip}"><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}"/></clipPath></defs>`;
+  s += `<line class="peak" clip-path="url(#${clip})" x1="${X(lx0)}" y1="${Y(peakUs(lx0))}" x2="${X(lx1)}" y2="${Y(peakUs(lx1))}"/>`;
+  // Every point sits on or above the line (no kernel beats the peak), so point labels go above and left,
+  // and the line's own label goes on the empty side, below and right.
+  const px = 10 ** (x0 + (x1 - x0) * (narrow ? 0.5 : 0.45));
+  const annText = narrow ? `${fmt(D.peakGBps)} GB/s peak` : `${fmt(D.peakGBps)} GB/s, the card's peak`;
+  const ax = X(px) + 12, ay = Y(peakUs(px)) + (narrow ? 28 : 20);
+  s += `<text class="ann" x="${ax}" y="${ay}">${annText}</text>`;
+  // merge points that would draw on top of each other (Q and the attention output are both 4096×4096)
+  const groups = [];
+  for (const p of pts.sort((a, b) => a.mib - b.mib)) {
+    const g = groups.find(g => Math.abs(X(g[0].mib) - X(p.mib)) < 14 && Math.abs(Y(g[0].us) - Y(p.us)) < 14);
+    if (g) g.push(p); else groups.push([p]);
+  }
+  const placed = [{ x: ax, y: ay - 12, w: annText.length * 7.4, h: 16 }];
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const g of groups) {
+    for (const p of g) s += `<circle class="dot" cx="${X(p.mib)}" cy="${Y(p.us)}" r="6" tabindex="0" data-tip="${esc(`${p.label}: ${MiB(p.mib)} (${p.types.join(', ')}) in ${usf(p.us)}, ${fmt(p.gbps)} GB/s`)}"/>`;
+    const label = g.map((p, i) => i ? p.label.charAt(0).toLowerCase() + p.label.slice(1) : p.label).join(' and ').replace(/ and ([kqv]) /i, ' and $1 ');
+    const cx = X(g[0].mib), cy = Y(g[0].us), w = label.length * 7.4, h = 16;
+    const tries = [[-12, -6, 'end'], [-12, -22, 'end'], [-4, -16, 'end'], [12, -14, 'start'], [-12, 18, 'end']];
+    let pick = tries[0];
+    for (const t of tries) {
+      const box = { x: t[2] === 'start' ? cx + t[0] : cx + t[0] - w, y: cy + t[1] - 12, w, h };
+      if (box.x < L || box.x + box.w > W) continue;
+      if (!placed.some(b => hit(b, box)) && !groups.some(o => o !== g && hit(box, { x: X(o[0].mib) - 7, y: Y(o[0].us) - 7, w: 14, h: 14 }))) { pick = t; placed.push(box); break; }
+    }
+    s += `<text class="lab" x="${cx + pick[0]}" y="${cy + pick[1]}" text-anchor="${pick[2]}">${esc(label)}</text>`;
+  }
+  s += `</svg>`;
+  s += `<table class="sr-only"><caption>Decode matrix multiplies, ${m.label}</caption><tr><th>Matrix</th><th>MiB</th><th>µs</th><th>GB/s</th></tr>${pts.map(p => `<tr><td>${esc(p.label)}</td><td>${p.mib}</td><td>${p.us}</td><td>${p.gbps}</td></tr>`).join('')}</table>`;
+  el.innerHTML = s;
+}
+
+/* ---------- chapter 3: prefill vs decode ---------- */
+// which kernel (by role) runs each logical node of layer 0
+function nodeRole(n, i, kernels) {
+  const has = r => kernels.some(k => k.role === r);
+  if (n.op === 'RMS_NORM' || n.op === 'MUL') return /attn_norm|^norm-/.test(n.name) && i < 3 ? 'attn_norm' : 'ffn_norm';
+  if (n.op === 'MUL_MAT') return { Qcur: 'q_proj', Kcur: 'k_proj', Vcur: 'v_proj', attn_out: 'o_proj', ffn_gate: has('gate') ? 'gate' : 'gate_up', ffn_up: has('up') ? 'up' : 'gate_up', ffn_out: 'down' }[n.name.split('-')[0]];
+  if (n.op === 'ROPE') return n.name.startsWith('Q') ? 'rope_q' : 'rope_k';
+  if (n.op === 'SET_ROWS') return n.name.startsWith('cache_k') ? 'kv_write_k' : 'kv_write_v';
+  if (n.op === 'FLASH_ATTN_EXT') return 'attention';
+  if (n.op === 'SWIGLU') return has('swiglu') ? 'swiglu' : 'gate_up';
+  if (n.op === 'ADD') return has('residual') ? (n.name.startsWith('ffn_inp') ? 'residual#0' : 'residual#1') : (n.name.startsWith('ffn_inp') ? 'o_proj' : 'down');
+  return null;
+}
+function kernelMap(m, ph) {
+  const ks = m[ph].layer0;
+  // the kernel that "owns" each logical role: the main kernel of that role (not its quantize/fixup/convert helpers)
+  const main = ks.map((k, i) => ({ ...k, i, base: k.role.split(':')[0], helper: k.role.includes(':') || ['convert', 'other'].includes(k.role) }));
+  let resN = 0;
+  main.forEach(k => { if (k.role === 'residual') k.base = 'residual#' + (resN++); });
+  const nodes = graphNodes(m, ph);
+  const owners = new Map();
+  nodes.forEach((n, i) => {
+    const r = nodeRole(n, i, ks);
+    if (!r) return;
+    const k = main.find(k => !k.helper && k.base === r);
+    if (k) { if (!owners.has(k.i)) owners.set(k.i, []); owners.get(k.i).push(n.name.startsWith('node_') ? `${n.name} (${n.op})` : n.name); }
+  });
+  return { main, owners, views: nodes.filter(n => !nodeRole(n, n.idx, ks)).length };
+}
+
+function renderShapes() {
+  const m = M(), p = m.prefill, d = m.decode;
+  const perLayer = ph => m[ph].layer0.length;
+  $('shape-ans').textContent = `The prompt pass and each decode step build the same ${fmt(m.nodes)}-node graph. The prompt pass has ${D.promptTokens} rows to multiply, so llama.cpp picks matrix-matrix kernels and tensor cores. A decode step has one, so it picks matrix-vector kernels, fuses neighbouring ops into them, and replays the whole step as one captured CUDA graph.`;
+  const mm = ph => [...new Set(m[ph].layer0.filter(k => /mul_mat|gemm|cutlass/.test(k.kernel) && !k.role.includes(':')).map(k => k.kernel.replace(/<.*/, '')))].map(x => `<code>${esc(x)}</code>`).join(', ');
+  const at = ph => [...new Set(m[ph].layer0.filter(k => k.op === 'attention').map(k => k.kernel.replace(/<.*/, '')))].map(x => `<code>${esc(x)}</code>`).join(' + ');
+  const row = (label, a, b) => `<div class="r"><b>${label}</b><span>${a}</span><span>${b}</span></div>`;
+  $('shape-facts').innerHTML = `<div class="r h"><span></span><span>${PHASES.prefill}</span><span>${PHASES.decode}</span></div>` +
+    row('Kernels per pass', `<span class="n">${fmt(p.kernels)}</span>`, `<span class="n">${fmt(d.kernels)}</span>`) +
+    row('Kernels in layer 0', `<span class="n">${perLayer('prefill')}</span>`, `<span class="n">${perLayer('decode')}</span>`) +
+    row('Matrix multiply', mm('prefill'), mm('decode')) +
+    row('Attention', at('prefill'), at('decode')) +
+    row('How it is launched', 'One kernel at a time. A CUDA graph is captured only after two identical calls, and the prompt pass happens once.', 'Replays of one captured CUDA graph. The step has the same shape every time, so the graph is reused.') +
+    row('GPU busy time', `<span class="n">${ms(p.totalUs)}</span>`, `<span class="n">${ms(d.totalUs)}</span> per step`);
+
+  $('shape-srcs').innerHTML = REFS.graphs.map(ref).join('');
+  $('kmaps').innerHTML = ['prefill', 'decode'].map(ph => {
+    const { main, owners, views } = kernelMap(m, ph);
+    const rows = main.map(k => {
+      const nodes = owners.get(k.i) || [];
+      const fused = nodes.length > 1;
+      const what = k.role.includes(':quant_act') ? 'converts the activations to 8-bit for the next multiply'
+        : k.role.includes(':fixup') ? 'adds up the partial tiles of the multiply before it'
+        : k.role === 'convert' ? 'casts the activations between 32-bit and 16-bit floats'
+        : k.role === 'other' ? 'cuBLAS: sums split-K partial results'
+        : k.base === 'attention' ? (ph === 'decode' ? 'merges the two halves of the cache that ran in parallel' : 'merges the four chunks of 64 cells in each output tile') : '';
+      return `<tr class="${fused ? 'fused' : ''}"><td><code class="k">${esc(k.kernel)}</code><span class="nodes">${nodes.length ? 'runs ' + nodes.map(n => `<code>${esc(n)}</code>`).join(', ') : esc(what)}</span></td><td class="r">${usf(k.us)}</td></tr>`;
+    }).join('');
+    return `<div><h3>${PHASES[ph]} <span>layer 0, ${m.label}, ${main.length} kernels</span></h3><table class="kmap">${rows}</table><p class="note">${views} of the layer's ${m.graph[ph].length} nodes are reshapes, views and permutes. They change how memory is read and launch nothing.</p></div>`;
+  }).join('');
+}
+
+/* ---------- chapter 4: Q4_K ---------- */
+function renderQuant() {
+  $('quant-ans').textContent = `Q4_K_M stores most matrices as Q4_K: blocks of 256 weights, each weight a 4-bit integer, with a scale and an offset for every 32 of them. A matrix multiply never expands the block back to 16-bit floats in memory. It converts the activations to 8-bit integers instead and works on integers.`;
+  drawQ4K($('q4k'));
+  $('q4k-cap').textContent = `Widths are to scale: 144 bytes for 256 weights is 4.5 bits per weight. Q6_K, used for the output head and half of the value and down projections, packs 256 weights into 210 bytes, 6.56 bits each.`;
+  const P = (...xs) => xs.map(p => `<p>${p}</p>`).join('');
+  $('quant-prose').innerHTML = P(
+    `Each weight in a group of 32 is rebuilt from its 4-bit integer <i>q</i> (0 to 15), the group's 6-bit scale and minimum, and the block's two 16-bit floats:`,
+  ) + `<p class="math">w = d × scale<sub>j</sub> × q − dmin × min<sub>j</sub></p>` + P(
+    `Before every quantized multiply, a small kernel converts the activation vector to Q8_1: groups of 32 eight-bit integers, each group with a 16-bit scale (its largest absolute value divided by 127) and the sum of its values, 36 bytes per 32 numbers. A weight-times-activation sum over one group then splits into an integer part and a correction for the minimum:`,
+  ) + `<p class="math">Σ w x ≈ d × scale<sub>j</sub> × d<sub>8</sub> × Σ q q<sub>8</sub> − dmin × min<sub>j</sub> × Σ x</p>` + P(
+    `The integer sum Σ <i>q q</i><sub>8</sub> is the expensive part. The scales are applied once per group of 32, not once per weight. The correction needs only the sum of the activations, which Q8_1 stores.`,
+    `For one token, <code>mul_mat_vec_q</code> does the integer sums with <code>dp4a</code>, an instruction that multiplies four pairs of 8-bit integers and adds them in one step. One block of 128 threads computes one output row; for Q4_K, 16 threads share each block of 256 weights.`,
+    `For the prompt, <code>mul_mat_q</code> loads tiles of 128 weight rows and 48 tokens into shared memory, widening the 4-bit weights to 8 bits on the way, and multiplies them on the tensor cores with 8-bit integer instructions (<code>mma.sync … m16n8k32 … s8</code> for Q4_K). The scales are applied to the integer results afterwards.`,
+    `The F16 model skips all of this. Decode runs <code>mul_mat_vec_f</code> directly on 16-bit weights, and the prompt pass goes to cuBLAS, with small kernels casting the activations to 16-bit floats and the results back.`,
+  ) + `<div class="srcs">${REFS.quant.map(ref).join('')}</div>`;
+}
+
+function drawQ4K(el) {
+  const narrow = el.clientWidth < 600;
+  const W = narrow ? 380 : 760, unit = W / 144;
+  const y = narrow ? 48 : 36, h = 40, smallW = 16 * unit;
+  const parts = [
+    { b: 4, fill: 'var(--ink)', op: 0.85 },   // d, dmin
+    { b: 12, fill: 'var(--ink)', op: 0.45 },  // scales and mins
+    { b: 128, fill: 'var(--a)', op: 1 },      // 4-bit weights
+  ];
+  const lines = narrow
+    ? { qs: ['128 bytes: 256 weights,', '4 bits each'], groups: ['8 groups of 32 weights; each has', 'a 6-bit scale and a 6-bit minimum'], small: ['16 bytes: d and dmin (two 16-bit floats),', 'then the 8 scales and 8 minimums'] }
+    : { qs: ['128 bytes: 256 weights, 4 bits each'], groups: ['8 groups of 32 weights; each group has a 6-bit scale and a 6-bit minimum'], small: ['16 bytes: d and dmin, two 16-bit floats, then the 8 scales and 8 minimums packed in 12 bytes'] };
+  const H = y + h + 24 + 28 + 20 * (lines.groups.length + lines.small.length) + 24;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="A Q4_K block of 144 bytes, drawn to scale: 4 bytes for d and dmin, 12 bytes of 6-bit scales and minimums, and 128 bytes holding 256 four-bit weights in 8 groups of 32.">`;
+  let x = 0;
+  for (const p of parts) { s += `<rect x="${x}" y="${y}" width="${p.b * unit}" height="${h}" fill="${p.fill}" fill-opacity="${p.op}" stroke="var(--bg)" stroke-width="1"/>`; x += p.b * unit; }
+  // weights label above the orange part
+  lines.qs.forEach((t, i) => { s += `<text class="lab" x="${smallW + 4}" y="${y - 10 - (lines.qs.length - 1 - i) * 16}">${t}</text>`; });
+  // 8 groups under the weights
+  const gw = 128 * unit / 8, gy = y + h + 8;
+  for (let g = 0; g < 8; g++) s += `<rect x="${smallW + g * gw + 1}" y="${gy}" width="${gw - 2}" height="10" fill="var(--track)"/>`;
+  let ty = gy + 32;
+  lines.groups.forEach(t => { s += `<text x="${smallW + 4}" y="${ty}">${t}</text>`; ty += 20; });
+  // the 16 header bytes: a tick down from the small parts, then the label
+  ty += 8;
+  s += `<line x1="${smallW / 2}" y1="${y + h}" x2="${smallW / 2}" y2="${ty - 14}" stroke="var(--ink2)" stroke-width="1"/>`;
+  lines.small.forEach(t => { s += `<text x="0" y="${ty}">${t}</text>`; ty += 20; });
+  s += `</svg>`;
+  el.innerHTML = s;
+}
+
+/* ---------- method ---------- */
+function renderMethod() {
+  const q = D.models.q4_k_m, f = D.models.f16;
+  const items = [
+    ['Request', `The tracer's request: a streaming <code>POST /v1/chat/completions</code> with “Why is the sky blue?”, plus <code>max_tokens: 64</code> and <code>seed: 42</code>. The Llama 3.1 chat template adds a dated system header, so the prompt is ${D.promptTokens} tokens.`],
+    ['Server', `<code>llama-server -ngl 99 -c 16384 -np 4</code>, the tracer's example config, with flash attention left on <code>auto</code>. llama.cpp built from <code>${D.commit.slice(0, 7)}</code> with CUDA for compute capability 8.9.`],
+    ['Models', `Llama 3.1 8B Instruct as F16 (converted from the BF16 release) and as Q4_K_M (quantized from that F16 file with <code>llama-quantize</code>).`],
+    ['Hardware', `One ${esc(D.gpu)} (24 GB, ${fmt(D.peakGBps)} GB/s) in Docker Desktop on Windows (WSL2). The GPU also drives a display, so its clocks move between steps.`],
+    ['Graph nodes', `From <code>llama-eval-callback</code>, which prints every ggml node as it runs. The callback makes the scheduler stop after each node, so this is the graph before CUDA fusion. That run had one sequence, while the server has four slots; the server's graph adds one reshape of each layer's cache (step 5) and is otherwise the same. The decode-shaped graph is a 1-token batch at position 0.`],
+    ['Kernels and times', `From Nsight Systems 2026.3 tracing one real request to <code>llama-server</code>. The request is cut into ${q.decode.steps + 1} passes at each logits copy back to the CPU. The prompt pass is a single run; decode numbers are the median per kernel over the ${q.decode.steps} steps. Kernel times are reliable under the profiler; wall-clock times are not, because tracing slows every launch.`],
+    ['Tokens per second', `From <code>llama-bench -p 41 -n 64 -r 5</code> with no profiler: ${fmt(q.bench.tg, 1)} tokens/s for Q4_K_M and ${fmt(f.bench.tg, 1)} for F16.`],
+    ['Bandwidth', `Bytes of the weight matrices a kernel must read, divided by its time. Activations, the KV cache and the 8-bit activation copies are left out; at this context length they are a few hundred kilobytes per step.`],
+    ['Raw data', `<a href="inference/captures/${esc(D.capture)}/NOTES.md">Notes</a>, the inventories for <a href="inference/captures/${esc(D.capture)}/q4_k_m/inventory.md">Q4_K_M</a> and <a href="inference/captures/${esc(D.capture)}/f16/inventory.md">F16</a>, and <a href="inference/README.md">how to rerun the capture</a>.`],
+  ];
+  $('spec').innerHTML = items.map(([k, v]) => `<div><dt>${k}</dt><dd><p>${v}</p></dd></div>`).join('');
+}
+
+/* ---------- switches, tooltip, render ---------- */
+function makeSwitch(el, options, get, set) {
+  const g = el.querySelector('[role=group]');
+  g.innerHTML = Object.entries(options).map(([k, v]) => `<button type="button" data-k="${k}">${esc(v)}</button>`).join('');
+  const sync = () => g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.k === get())));
+  g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; set(b.dataset.k); sync(); });
+  sync();
+}
+
+const tip = $('tip');
+function showTip(t, x, y) { if (!t) return; tip.textContent = t; tip.hidden = false; const r = tip.getBoundingClientRect(); tip.style.left = Math.min(x + 12, innerWidth - r.width - 16) + 'px'; tip.style.top = Math.max(8, y - r.height - 12) + 'px'; }
+document.addEventListener('pointerover', e => { const t = e.target.closest('[data-tip]'); if (t && t.dataset.tip) showTip(t.dataset.tip, e.clientX, e.clientY); });
+document.addEventListener('pointermove', e => { if (!tip.hidden) { const t = e.target.closest('[data-tip]'); if (t) showTip(t.dataset.tip, e.clientX, e.clientY); else tip.hidden = true; } });
+document.addEventListener('focusin', e => { const t = e.target.closest('[data-tip]'); if (t && t.dataset.tip) { const r = t.getBoundingClientRect(); showTip(t.dataset.tip, r.left, r.top); } });
+document.addEventListener('focusout', () => { tip.hidden = true; });
+
+function renderAll() { renderHero(); renderLayer(); renderMemory(); renderShapes(); renderQuant(); renderMethod(); }
+makeSwitch($('model-switch'), { q4_k_m: 'Q4_K_M, 4.9 bits per weight', f16: 'F16, 16 bits per weight' }, () => model, k => { model = k; renderAll(); });
+makeSwitch($('phase-switch'), { decode: PHASES.decode, prefill: PHASES.prefill }, () => phase, k => { phase = k; renderLayer(); });
+let lastNarrow = null;
+addEventListener('resize', () => { const n = $('bw-chart').clientWidth < 600; if (n !== lastNarrow) { lastNarrow = n; drawBandwidth($('bw-chart'), M()); drawQ4K($('q4k')); } });
+renderAll();
+lastNarrow = $('bw-chart').clientWidth < 600;
+</script>
+</body>
+</html>

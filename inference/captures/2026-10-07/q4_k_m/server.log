@@ -1,0 +1,23 @@
+0.00.304.189 I srv  llama_server: initializing ...
+0.00.304.215 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.304.555 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.307.115 I srv    load_model: loading model '/models/Llama-3.1-8B-Instruct-Q4_K_M.gguf'
+0.01.364.487 I cmn          init: llama threadpool init, n_threads = 16
+0.01.431.172 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 4096, kv_unified = 'false'
+0.01.434.235 I srv  llama_server: model loaded
+0.01.434.254 I srv  llama_server: listening on http://127.0.0.1:8080
+0.01.434.254 W srv  llama_server: notice: server default port will be changed to :9931 in a future release (ref: https://github.com/ggml-org/llama.cpp/pull/26508)
+0.04.595.371 I slot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1
+0.04.595.427 I slot launch_slot_: id  3 | task 0 | processing task, is_child = 0
+0.05.091.375 I slot print_timing: id  3 | task 0 | prompt eval time =      25.65 ms /    41 tokens (    0.63 ms per token,  1598.69 tokens per second)
+0.05.091.387 I slot print_timing: id  3 | task 0 |        eval time =     470.26 ms /    64 tokens (    7.46 ms per token,   133.97 tokens per second)
+0.05.091.387 I slot print_timing: id  3 | task 0 |       total time =     495.91 ms /   105 tokens
+0.05.091.393 I slot print_timing: id  3 | task 0 |    graphs reused =         63
+0.05.091.415 I slot      release: id  3 | task 0 | stop processing: n_tokens = 104, truncated = 0
+0.06.095.867 I srv    operator(): operator(): cleaning up before exit...
+Received second interrupt, terminating immediately.
+Collecting data...
+Generating '/tmp/nsys-root/nsys-report-1de8.qdstrm'
+[1/1] [0%                          ] trace.nsys-rep[1/1] [0%                          ] trace.nsys-rep[1/1] [1%                          ] trace.nsys-rep[1/1] [2%                          ] trace.nsys-rep[1/1] [5%                          ] trace.nsys-rep[1/1] [8%                          ] trace.nsys-rep[1/1] [13%                         ] trace.nsys-rep[1/1] [==18%                       ] trace.nsys-rep[1/1] [==19%                       ] trace.nsys-rep[1/1] [==20%                       ] trace.nsys-rep[1/1] [=======================93%  ] trace.nsys-rep[1/1] [=======================96%  ] trace.nsys-rep[1/1] [========================98% ] trace.nsys-rep[1/1] [========================100%] trace.nsys-rep[1/1] [========================100%] trace.nsys-rep
+Generated:
+	/work/captures/2026-10-07/q4_k_m/trace.nsys-rep

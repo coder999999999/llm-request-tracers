@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Inference engines, One Request, Traced</title>
+<meta name="description" content="The major LLM inference engines side by side in one table: hardware, formats, quantization, batching, KV cache, multi-GPU, structured output and API.">
+<meta property="og:title" content="Inference engines">
+<meta property="og:description" content="The major LLM inference engines side by side in one table: hardware, formats, quantization, batching, KV cache, multi-GPU, structured output and API.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/compare/site.css?v=bff2d9b0">
+<style>
+  /* engines table: categories down the side, engines across; scrolls sideways inside its own box */
+  .grid-wrap{overflow-x:auto;border-top:2px solid var(--rule2);margin-top:24px}
+  .egrid{border-collapse:separate;border-spacing:0;width:100%;min-width:1760px;font-size:var(--fs-s);line-height:1.5}
+  .egrid th,.egrid td{padding:12px 16px 12px 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--rule)}
+  .egrid thead th{padding-block:16px;border-bottom:2px solid var(--rule2);font:700 var(--fs-base)/1.3 var(--sans)}
+  .egrid thead th small{display:block;margin-top:4px;font:400 var(--fs-xs)/1.4 var(--sans);color:var(--ink2)}
+  .egrid thead th a{text-underline-offset:4px;text-decoration-thickness:1px}
+  .egrid tbody th{font-weight:600;color:var(--ink)}
+  .egrid td{color:var(--ink2);width:200px}
+  .egrid th:first-child{position:sticky;left:0;z-index:1;width:140px;min-width:140px;background:var(--bg);padding-right:24px}
+  .traced-a{color:var(--a)}
+  .traced-b{color:var(--b)}
+  .egrid tbody tr:hover td,.egrid tbody tr:hover th{background:var(--hover)}
+  :root{--hover:#efede6}
+  /* dark mode follows the system setting */
+  @media (prefers-color-scheme:dark){
+    :root{color-scheme:dark;--bg:#141413;--ink:#ecebe6;--ink2:#a8a69f;--ink3:#76746e;--rule:#2f2e2b;--rule2:#ecebe6;--a:#f08a52;--b:#86a2ff;--hover:#1f1e1c}
+  }
+  .egrid.wide{min-width:2160px}
+  .egrid .no{color:var(--ink3)}
+  .egrid td b{color:var(--ink);font-weight:600}
+  /* group heading rows: the label sticks to the left edge while the table scrolls */
+  .egrid tr.grp th{position:static;padding:32px 0 8px;border-bottom:2px solid var(--rule2);background:none}
+  .egrid tr.grp th span{position:sticky;left:0;font:700 var(--fs-xs)/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+  .egrid tbody tr.grp:hover th{background:none}
+  .tbl-h{font:700 var(--fs-2xl)/1.1 var(--sans);letter-spacing:-.01em}
+  .tbl-d{margin:8px 0 16px;max-width:36em;color:var(--ink2)}
+  .obs{margin-top:64px;padding-top:48px;border-top:2px solid var(--rule2)}
+  .key{display:flex;flex-wrap:wrap;gap:8px 32px;margin:0;font-size:var(--fs-s);color:var(--ink2)}
+  .key b{font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="index.html">One Request, Traced</a>
+    <div class="top-r">
+      <nav aria-label="Pages"><a href="index.html">Compare</a><a href="tracers.html">Tracers and code</a><a href="engines.html" aria-current="page">Engines</a><a href="index.html#method">Method</a></nav>
+    </div>
+  </header>
+  <div class="page-head">
+    <h1>Inference engines</h1>
+    <p>The major LLM inference servers in one table, then the tools that trace requests from the app side. This site traces and benchmarks two of the engines; everything else is here for context, from each project's docs, not tested on this site.</p>
+  </div>
+</div>
+
+<section class="wrap" aria-labelledby="h-table">
+  <h2 id="h-table" class="tbl-h">Inference engines</h2>
+  <p class="tbl-d">The servers that load the weights and run the model. Grouped by what each is for, what hardware it runs on, which models it takes, how it serves, and the project behind it.</p>
+  <p class="key"><span><b class="traced-a">llama.cpp</b> and <b class="traced-b">vLLM</b> are traced and benchmarked here</span><span>As of October 2026. Engines move fast; check the repo before relying on a cell.</span></p>
+  <div class="grid-wrap" tabindex="0" role="region" aria-labelledby="h-table">
+    <table class="egrid wide">
+      <thead>
+        <tr>
+          <th scope="col"><span class="sr-only">Category</span></th>
+          <th scope="col"><a class="traced-b" href="vllm.html">vLLM</a><small>Traced and benchmarked</small></th>
+          <th scope="col"><a href="https://github.com/sgl-project/sglang">SGLang</a></th>
+          <th scope="col"><a href="https://github.com/NVIDIA/TensorRT-LLM">TensorRT-LLM</a></th>
+          <th scope="col"><a href="https://github.com/InternLM/lmdeploy">LMDeploy</a></th>
+          <th scope="col"><a href="https://github.com/huggingface/text-generation-inference">TGI</a><small>Hugging Face Text Generation Inference. Archived</small></th>
+          <th scope="col"><a class="traced-a" href="llama-cpp.html">llama.cpp</a><small>Traced and benchmarked</small></th>
+          <th scope="col"><a href="https://github.com/ollama/ollama">Ollama</a></th>
+          <th scope="col"><a href="https://lmstudio.ai">LM Studio</a><small>Desktop app</small></th>
+          <th scope="col"><a href="https://github.com/ml-explore/mlx-lm">MLX LM</a></th>
+          <th scope="col"><a href="https://github.com/mlc-ai/mlc-llm">MLC LLM</a></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="grp"><th scope="colgroup" colspan="11"><span>What it is for</span></th></tr>
+        <tr>
+          <th scope="row">Built for</th>
+          <td>Serving many users at once from datacentre GPUs</td>
+          <td>Serving many users at once, especially agents and multi-call programs</td>
+          <td>The highest throughput on NVIDIA datacentre GPUs</td>
+          <td>Serving many users at once on NVIDIA and Huawei Ascend</td>
+          <td>Production serving (archived)</td>
+          <td>Running models anywhere: laptops, desktops, CPUs, phones, any GPU</td>
+          <td>Running models locally with one command</td>
+          <td>Running models locally in a desktop app, no terminal needed</td>
+          <td>Running and fine-tuning models on a Mac</td>
+          <td>Compiling a model to run natively on phones, in browsers and on any GPU</td>
+        </tr>
+        <tr>
+          <th scope="row">Users at once</th>
+          <td>Many; built for high concurrency</td>
+          <td>Many</td>
+          <td>Many</td>
+          <td>Many</td>
+          <td>Many</td>
+          <td>A few: a fixed number of parallel slots</td>
+          <td>A few per loaded model</td>
+          <td>A few: 4 parallel requests by default</td>
+          <td>One or a few</td>
+          <td>Mostly one, on a device</td>
+        </tr>
+        <tr>
+          <th scope="row">Setup</th>
+          <td>pip or Docker on Linux with a supported GPU</td>
+          <td>pip or Docker on Linux with a supported GPU</td>
+          <td>The most work: NVIDIA containers and per-model tuning</td>
+          <td>pip or Docker</td>
+          <td>Docker</td>
+          <td>One binary: download a build or compile for your GPU</td>
+          <td>An installer, then <code>ollama run</code></td>
+          <td>An installer with a GUI; the easiest here</td>
+          <td>pip on a Mac</td>
+          <td>Compile each model for each target device</td>
+        </tr>
+        <tr>
+          <th scope="row">Good fit for</th>
+          <td>High-throughput serving on datacentre GPUs; the widest model support</td>
+          <td>Agents and multi-turn chat with lots of shared prefix; large MoE models</td>
+          <td>The last bit of speed on recent NVIDIA GPUs, if you accept the setup</td>
+          <td>Fast 4-bit serving; InternLM and vision-language models</td>
+          <td>Existing deployments only. Archived in March 2026 after a maintenance-mode period; Hugging Face recommends vLLM and SGLang, or llama.cpp and MLX locally</td>
+          <td>Local and edge: laptops, CPUs, mixed CPU and GPU, small footprint</td>
+          <td>The easiest local setup: one person, one machine</td>
+          <td>Trying models on your own PC with a GUI; AMD and Intel GPUs through Vulkan</td>
+          <td>Running and fine-tuning models on a Mac</td>
+          <td>Shipping a model inside a phone app or a web page</td>
+        </tr>
+        <tr class="grp"><th scope="colgroup" colspan="11"><span>Hardware</span></th></tr>
+        <tr>
+          <th scope="row">NVIDIA (CUDA)</th>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Yes, the only target</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td><span class="no">No</span></td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <th scope="row">AMD (ROCm)</th>
+          <td>Yes</td>
+          <td>Yes (Instinct)</td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">Not listed</span></td>
+          <td>Yes</td>
+          <td>Yes (HIP)</td>
+          <td>Yes</td>
+          <td>Yes, through its ROCm runtime</td>
+          <td><span class="no">No</span></td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <th scope="row">Vulkan (any GPU vendor)</th>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td><b>Yes</b>, a full backend: AMD, Intel, NVIDIA and mobile GPUs</td>
+          <td><b>Yes</b>, on by default on Windows and Linux when the Vulkan backend is installed</td>
+          <td><b>Yes</b>, through its llama.cpp Vulkan runtime</td>
+          <td><span class="no">No</span></td>
+          <td><b>Yes</b>, its main path for AMD and Intel GPUs</td>
+        </tr>
+        <tr>
+          <th scope="row">Apple (Metal)</th>
+          <td><span class="no">No</span></td>
+          <td>Apple silicon listed as supported</td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">No</span></td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>Yes, with llama.cpp or MLX</td>
+          <td>Yes, the only target</td>
+          <td>Yes, Mac and iOS</td>
+        </tr>
+        <tr>
+          <th scope="row">CPU</th>
+          <td>Yes (x86, Arm)</td>
+          <td>Yes (Intel CPUs)</td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">Not listed</span></td>
+          <td><span class="no">Not listed</span></td>
+          <td>Yes, a first-class target</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td><span class="no">No</span></td>
+          <td><span class="no">Not listed</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Other</th>
+          <td>Intel GPUs, Google TPU; Ascend, AWS Neuron and more through plugins</td>
+          <td>Google TPU, Intel GPUs, Huawei Ascend, Moore Threads</td>
+          <td><span class="no">None</span></td>
+          <td>Huawei Ascend and others through its PyTorch engine</td>
+          <td>Intel GPUs and Gaudi, Google TPU, AWS Inferentia</td>
+          <td>SYCL (Intel), CANN (Ascend), OpenCL (Adreno) and more</td>
+          <td><span class="no">None</span></td>
+          <td><span class="no">None</span></td>
+          <td><span class="no">None</span></td>
+          <td>WebGPU in the browser; Android through OpenCL</td>
+        </tr>
+        <tr class="grp"><th scope="colgroup" colspan="11"><span>Models</span></th></tr>
+        <tr>
+          <th scope="row">Model format</th>
+          <td>Hugging Face safetensors; GGUF experimental</td>
+          <td>Hugging Face safetensors</td>
+          <td>Hugging Face checkpoints, or compiled TensorRT engines (older path)</td>
+          <td>Hugging Face safetensors</td>
+          <td>Hugging Face safetensors</td>
+          <td>GGUF (converted from Hugging Face)</td>
+          <td>GGUF from its model library; can import safetensors</td>
+          <td>GGUF, and MLX on Macs</td>
+          <td>MLX safetensors (converted from Hugging Face)</td>
+          <td>MLC-compiled weights (converted from Hugging Face)</td>
+        </tr>
+        <tr>
+          <th scope="row">Quantization</th>
+          <td>FP8, AWQ, GPTQ, INT8, bitsandbytes, compressed-tensors</td>
+          <td>FP8, FP4, AWQ, GPTQ, INT8</td>
+          <td>FP8, NVFP4, INT4 AWQ, INT8 SmoothQuant (via NVIDIA ModelOpt)</td>
+          <td>4-bit AWQ, W8A8, FP8; INT4 and INT8 KV cache</td>
+          <td>AWQ, GPTQ, Marlin, FP8, bitsandbytes</td>
+          <td>1.5 to 8-bit k-quants and i-quants; quantized KV cache</td>
+          <td>GGUF quants (4-bit by default); quantized KV cache</td>
+          <td>GGUF quants; MLX quants on Macs</td>
+          <td>2 to 8-bit group quantization</td>
+          <td>3 and 4-bit group quantization, or FP16</td>
+        </tr>
+        <tr class="grp"><th scope="colgroup" colspan="11"><span>Serving</span></th></tr>
+        <tr>
+          <th scope="row">Batching</th>
+          <td>Continuous batching under a token budget per step; chunked prefill</td>
+          <td>Continuous batching; CPU scheduling overlapped with the GPU step; chunked prefill</td>
+          <td>In-flight (continuous) batching</td>
+          <td>Persistent (continuous) batching</td>
+          <td>Continuous batching in the Rust router</td>
+          <td>A fixed number of parallel slots, batched together each step</td>
+          <td>A few parallel requests per loaded model</td>
+          <td>Continuous batching from llama.cpp since 0.4, and for MLX since 0.4.2</td>
+          <td>Batch generation API; the server batches concurrent requests, except with a quantized KV cache</td>
+          <td>Continuous batching in its server</td>
+        </tr>
+        <tr>
+          <th scope="row">KV cache and prefix reuse</th>
+          <td>Paged KV blocks (PagedAttention); automatic prefix caching by block hash</td>
+          <td>RadixAttention: a radix tree of cached prefixes shared across requests</td>
+          <td>Paged KV cache; KV reuse across requests; offload to host memory</td>
+          <td>Blocked KV cache; prefix caching</td>
+          <td>Paged attention; prefix caching</td>
+          <td>One KV buffer split across slots; each slot reuses its longest matching prefix</td>
+          <td>Inherits the ggml engine's per-request prompt cache</td>
+          <td>Inherits llama.cpp and MLX caching; a unified KV cache by default</td>
+          <td>Rotating KV cache; prompt caches you can save to disk and reload</td>
+          <td>Paged KV cache</td>
+        </tr>
+        <tr>
+          <th scope="row">Multi-GPU</th>
+          <td>Tensor, pipeline, data and expert parallel; multi-node</td>
+          <td>Tensor, pipeline, data and expert parallel; prefill and decode on separate machines</td>
+          <td>Tensor, pipeline and expert parallel; multi-node; disaggregated serving</td>
+          <td>Tensor parallel; data and expert parallel for MoE models</td>
+          <td>Tensor parallel</td>
+          <td>Split by layer or by row; RPC backend for several machines</td>
+          <td>Spreads layers across the GPUs it finds</td>
+          <td>Splits layers across GPUs (llama.cpp)</td>
+          <td>Distributed inference over <code>mx.distributed</code></td>
+          <td>Tensor parallel across GPUs</td>
+        </tr>
+        <tr>
+          <th scope="row">Structured output</th>
+          <td>JSON schema, regex, grammars (XGrammar, Guidance)</td>
+          <td>JSON schema, regex, EBNF (XGrammar by default)</td>
+          <td>JSON schema and grammars (XGrammar)</td>
+          <td>JSON schema and regex</td>
+          <td>JSON schema and regex; tool calls</td>
+          <td>GBNF grammars; JSON schema converted to a grammar</td>
+          <td>JSON schema through the <code>format</code> field</td>
+          <td>JSON schema</td>
+          <td>None built in</td>
+          <td>JSON schema (XGrammar comes from the same team)</td>
+        </tr>
+        <tr class="grp"><th scope="colgroup" colspan="11"><span>Project</span></th></tr>
+        <tr>
+          <th scope="row">Made by</th>
+          <td>Started at UC Berkeley; now a PyTorch Foundation project</td>
+          <td>Hosted by LMSYS, a non-profit</td>
+          <td>NVIDIA</td>
+          <td>InternLM team, Shanghai AI Lab</td>
+          <td>Hugging Face</td>
+          <td>ggml-org community</td>
+          <td>Ollama</td>
+          <td>LM Studio</td>
+          <td>Apple (ml-explore)</td>
+          <td>The mlc-ai community, started at Carnegie Mellon</td>
+        </tr>
+        <tr>
+          <th scope="row">Written in</th>
+          <td>Python, with C++ and CUDA kernels</td>
+          <td>Python, with its own CUDA kernel library</td>
+          <td>Python and C++, CUDA kernels</td>
+          <td>Python; C++ and CUDA in the TurboMind engine</td>
+          <td>Rust router, Python model server</td>
+          <td>C and C++ (ggml)</td>
+          <td>Go, on a ggml-based engine</td>
+          <td>A desktop app over the llama.cpp and MLX engines</td>
+          <td>Python on MLX (C++ and Metal)</td>
+          <td>Python and C++ on Apache TVM</td>
+        </tr>
+        <tr>
+          <th scope="row">License</th>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0</td>
+          <td>MIT</td>
+          <td>MIT</td>
+          <td>Proprietary app, free at home and at work; open-source SDKs</td>
+          <td>MIT</td>
+          <td>Apache 2.0</td>
+        </tr>
+        <tr>
+          <th scope="row">API</th>
+          <td>OpenAI-compatible server; offline Python API</td>
+          <td>OpenAI-compatible server; a Python frontend language for multi-call programs</td>
+          <td>OpenAI-compatible <code>trtllm-serve</code>; Triton backend</td>
+          <td>OpenAI-compatible server; Python pipeline</td>
+          <td>Its own <code>/generate</code> plus an OpenAI-compatible Messages API</td>
+          <td>OpenAI-compatible <code>llama-server</code> with a web UI; C library</td>
+          <td>Its own REST API plus OpenAI-compatible; CLI and desktop app</td>
+          <td>OpenAI-compatible server, its own REST API, Python and TypeScript SDKs, <code>lms</code> CLI; headless as llmster</td>
+          <td>OpenAI-style server; Python API; LoRA fine-tuning in the same package</td>
+          <td>OpenAI-compatible API over REST, Python, JavaScript, iOS and Android</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="more">Want numbers rather than features? The <a href="index.html">comparison page</a> benchmarks llama.cpp against vLLM on one RTX 4090.</p>
+</section>
+
+<section class="wrap obs" aria-labelledby="h-obs">
+  <h2 id="h-obs" class="tbl-h">Observability</h2>
+  <p class="tbl-d">Tools that trace requests from the app side: every model call your app makes, with its prompt, response, latency and cost. They see the call from outside; the tracers on this site show what happens inside the server during one.</p>
+  <div class="grid-wrap" tabindex="0" role="region" aria-labelledby="h-obs">
+    <table class="egrid">
+      <thead>
+        <tr>
+          <th scope="col"><span class="sr-only">Category</span></th>
+          <th scope="col"><a href="https://github.com/langfuse/langfuse">Langfuse</a></th>
+          <th scope="col"><a href="https://www.langchain.com/langsmith">LangSmith</a></th>
+          <th scope="col"><a href="https://github.com/Arize-ai/phoenix">Arize Phoenix</a></th>
+          <th scope="col"><a href="https://github.com/comet-ml/opik">Opik</a></th>
+          <th scope="col"><a href="https://github.com/Helicone/helicone">Helicone</a><small>Maintenance mode</small></th>
+          <th scope="col"><a href="https://github.com/wandb/weave">W&amp;B Weave</a></th>
+          <th scope="col"><a href="https://www.braintrust.dev">Braintrust</a></th>
+          <th scope="col"><a href="https://github.com/traceloop/openllmetry">OpenLLMetry</a><small>Instrumentation only, no backend</small></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Made by</th>
+          <td>Langfuse, part of ClickHouse since January 2026</td>
+          <td>LangChain</td>
+          <td>Arize AI</td>
+          <td>Comet</td>
+          <td>Helicone; the team joined Mintlify in 2026</td>
+          <td>Weights &amp; Biases</td>
+          <td>Braintrust</td>
+          <td>Traceloop</td>
+        </tr>
+        <tr>
+          <th scope="row">License</th>
+          <td>MIT (core)</td>
+          <td>Proprietary platform; open-source SDKs</td>
+          <td>Elastic License 2.0 (source-available)</td>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0</td>
+          <td>Apache 2.0 SDK; the backend is the W&amp;B platform</td>
+          <td>Proprietary platform; open-source SDKs</td>
+          <td>Apache 2.0</td>
+        </tr>
+        <tr>
+          <th scope="row">Self-host</th>
+          <td>Yes, free (Docker, Kubernetes)</td>
+          <td>Enterprise plan only</td>
+          <td>Yes, free (local, Docker, Kubernetes)</td>
+          <td>Yes, free (Docker Compose, Kubernetes)</td>
+          <td>Yes (Docker Compose)</td>
+          <td>Through W&amp;B's self-managed or dedicated deployments</td>
+          <td>Hybrid: data plane in your cloud, on enterprise plans</td>
+          <td>Not applicable: sends data to the backend you choose</td>
+        </tr>
+        <tr>
+          <th scope="row">How data gets in</th>
+          <td>Python and JS SDKs, OpenTelemetry, framework integrations</td>
+          <td>SDKs (tight LangChain and LangGraph integration), OpenTelemetry</td>
+          <td>OpenTelemetry, with OpenInference auto-instrumentation</td>
+          <td>Python and TypeScript SDKs, OpenTelemetry</td>
+          <td>A proxy gateway (change the base URL), or async logging</td>
+          <td>Python and TypeScript SDKs (a decorator on your functions)</td>
+          <td>SDKs, a proxy, OpenTelemetry</td>
+          <td>OpenTelemetry instrumentation for LLM providers and vector DBs</td>
+        </tr>
+        <tr>
+          <th scope="row">Evals</th>
+          <td>LLM-as-judge, datasets, experiments, human annotation</td>
+          <td>Datasets, experiments, LLM-as-judge, annotation queues</td>
+          <td>LLM-based evals, versioned datasets, experiments</td>
+          <td>Datasets, experiments, LLM-as-judge, online evals, PyTest</td>
+          <td>Basic scoring</td>
+          <td>Scorers, datasets, evaluation comparisons</td>
+          <td>The core of the product: datasets, scorers, experiments</td>
+          <td>None (it only produces traces)</td>
+        </tr>
+        <tr>
+          <th scope="row">Prompt management</th>
+          <td>Yes, versioned, with a playground</td>
+          <td>Yes, a prompt hub and playground</td>
+          <td>Yes, versioned and tagged</td>
+          <td>Yes, with a playground</td>
+          <td>Yes, versioned, deployable through the gateway</td>
+          <td>Yes, prompts as versioned objects</td>
+          <td>Yes, with a playground</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <th scope="row">Good fit for</th>
+          <td>The default open-source pick; self-host it for free</td>
+          <td>Teams already building on LangChain or LangGraph</td>
+          <td>Local debugging on your own machine; OpenTelemetry-first teams</td>
+          <td>A fully open-source, self-hosted alternative to Langfuse</td>
+          <td>Existing users. No new features; it gets fixes only</td>
+          <td>Teams already on W&amp;B for training runs</td>
+          <td>Eval-heavy teams that want a hosted product</td>
+          <td>Sending LLM traces to an observability stack you already run (Datadog, Honeycomb, Grafana)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer style="margin-top:64px">
+    <p>Compiled from each project's README and docs, not measured here. As of October 2026. Simplified, and probably wrong in places. Corrections welcome as issues.</p>
+    <p>Learning notes, not affiliated with any of the projects listed.</p>
+  </footer>
+</div>
+
+</body>
+</html>

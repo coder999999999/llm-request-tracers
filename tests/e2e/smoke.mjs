@@ -185,7 +185,7 @@ async function tracersLayoutChecks(browser, base, mode) {
     ok(m.sw <= m.iw, where, `horizontal overflow (scrollWidth ${m.sw}, window ${m.iw})`);
     ok(m.ids.length === 0, where, `missing containers: ${m.ids.join(', ')}`);
     ok(m.rows >= 5, where, `expected 4 stage rows and a General row, found ${m.rows}`);
-    ok(m.cards === 4, where, `expected 4 tracer cards, found ${m.cards}`);
+    ok(m.cards === 5, where, `expected 5 tracer cards, found ${m.cards}`);
     ok(m.track, where, 'stage track not drawn');
     ok(m.current === 'Tracers and code', where, 'nav should mark Tracers and code as the current page, got ' + m.current);
     ok(m.tiny.length === 0, where, 'stage track text under 11px: ' + m.tiny.slice(0, 4).map(x => x.text + ' ' + x.px.toFixed(1)).join('; '));

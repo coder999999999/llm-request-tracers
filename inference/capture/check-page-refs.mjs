@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { checkRef } from '../../tools/check-sources.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html'];
+const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html', 'llama-cpp-weights.html'];
 const pages = PAGES.map(p => ({ page: p, html: fs.readFileSync(path.join(root, p), 'utf8') }));
 const commits = new Set(pages.map(({ page, html }) => {
   const c = /"commit":"([0-9a-f]{40})"/.exec(html)?.[1];
@@ -24,12 +24,12 @@ if (commits.size !== 1) throw new Error('the pages are pinned to different commi
 const [commit] = commits;
 const engine = { repo: 'https://github.com/ggml-org/llama.cpp', commit };
 
-// { file: '...', line: N, check: '...' } with single-quoted JS strings (\' escapes allowed)
-const STR = String.raw`'((?:[^'\\]|\\.)*)'`;
+// { file: '...', line: N, check: '...' } with single- or double-quoted JS strings (backslash escapes allowed)
+const STR = String.raw`(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")`;
 const RE = new RegExp(String.raw`\{\s*file:\s*${STR},\s*line:\s*(\d+),\s*check:\s*${STR}`, 'g');
 const unq = s => s.replace(/\\(.)/g, '$1');
 const refs = pages.flatMap(({ page, html }) =>
-  [...html.matchAll(RE)].map(m => ({ page, engine, file: unq(m[1]), line: +m[2], check: unq(m[3]) })));
+  [...html.matchAll(RE)].map(m => ({ page, engine, file: unq(m[1] ?? m[2]), line: +m[3], check: unq(m[4] ?? m[5]) })));
 
 const local = path.join(root, 'bench', '.src', 'llama.cpp');
 let useLocal = false;

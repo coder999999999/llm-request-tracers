@@ -894,7 +894,7 @@ function renderEmpty(){
       <li>Drag the background to pan, scroll or pinch to zoom, drag boxes to untangle.</li>
     </ol>
     <div class="sec"><h3>Start here</h3><div class="jumps">${["embd","attention","ffn_gate_up","lm_head","sample"].map(id=>jumpBtn(id)).join("")}</div></div>
-    <p style="font-size:12px;color:var(--fg-3)">Measured on one RTX 4090 with Nsight Systems, capture ${esc(MEASURED.capture)}. Source lines pinned to commit 2ca15f5 (Oct 4 2026). The write-up with charts is <a href="llama-cpp-forward.html">One forward pass</a>.</p>
+    <p style="font-size:12px;color:var(--fg-3)">Measured on one RTX 4090 with Nsight Systems, capture ${esc(MEASURED.capture)}. Source lines pinned to commit 2ca15f5 (Oct 4 2026). The write-up with charts is <a href="llama-cpp-forward.html">One forward pass</a>; the same pass laid out as a tape of weights, with the real values at each step, is <a href="llama-cpp-weights.html">Through the weights</a>.</p>
   </div>`;
 }
 insp.addEventListener("click",ev=>{

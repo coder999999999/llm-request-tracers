@@ -23,11 +23,12 @@ docker run --rm -v "$(pwd -W)/inference:/work" rtbench/llama-prof:2ca15f5 \
 
 ## The page
 
-Two pages at the site root render from these captures: `llama-cpp-forward.html`, the write-up with charts, and `llama-cpp-inference.html`, the same pass as a tracer graph you can step through. Each stays one self-contained file: the measured numbers sit in its `<script id="measured">` block, and the explanations and source references are written in the page.
+Three pages at the site root render from these captures: `llama-cpp-forward.html`, the write-up with charts; `llama-cpp-inference.html`, the same pass as a tracer graph you can step through; and `llama-cpp-weights.html`, the pass as a tape of every weight tensor in read order, with the real activation values the eval-callback logs recorded at each step. Each stays one self-contained file: the measured numbers sit in its `<script id="measured">` block, and the explanations and source references are written in the page.
 
 ```bash
-node inference/capture/to-page.mjs              # copy the numbers from captures/2026-10-07 into both pages
-node inference/capture/check-page-refs.mjs      # check every file:line reference on both pages at the pinned commit
+node inference/capture/to-page.mjs              # copy the numbers from captures/2026-10-07 into the forward and inference pages
+node inference/capture/to-weights.mjs           # build the weights page's block: tape from tensors.json, values from the ops logs
+node inference/capture/check-page-refs.mjs      # check every file:line reference on the three pages at the pinned commit
 ```
 
 `check-page-refs.mjs` applies the same rule as `tools/check-sources.mjs`: the check text must appear within 3 lines of the cited line. It reads `bench/.src/llama.cpp` when that checkout is at the pinned commit, and fetches from GitHub otherwise. Run both after changing a capture or the page's references.

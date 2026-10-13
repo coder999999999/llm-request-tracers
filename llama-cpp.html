@@ -633,7 +633,7 @@ const EX = {
   moe:"Mixtral 8x7B routes each token to 2 of 8 experts, so only about a quarter of FFN weights are read per token.",
   head:"Here: 1 row × 128,256 logits instead of 16 rows. Skipping the other rows saves a large matmul.",
   salloc:"<code>-ngl 99</code> keeps every layer on the GPU (one split); partial offload adds CPU splits and copies.",
-  compute:"Prefill is compute-bound (big matmuls); single-token decode is memory-bandwidth-bound (read every weight once).",
+  compute:"Prefill is compute-bound (big matmuls); single-token decode is memory-bandwidth-bound (read every weight once). The <a href=\"llama-cpp-inference.html\">inference tracer</a> zooms into this step, op by op.",
   cuda:"Build with <code>-DGGML_CUDA=ON</code>. Decode speed is roughly GPU memory bandwidth ÷ model size.",
   metal:"Enabled by default on macOS builds; all layers usually fit in unified memory.",
   cpu:"<code>-t N</code> sets compute threads; best near the number of physical cores.",

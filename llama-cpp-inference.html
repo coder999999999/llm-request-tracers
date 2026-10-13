@@ -1,0 +1,1035 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Follow the tensors through one forward pass of Llama 3.1 8B in llama.cpp, op by op, with the measured CUDA kernels and links to the exact source lines.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>llama.cpp Inference Tracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-bleed node canvas, top command bar, right inspector, bottom trace transport. Dark-only by request. */
+:root{
+  color-scheme: dark;
+  --bg:#0a0d11; --bg-2:#0f1318; --panel:#12161c; --panel-2:#171c23; --line:#232a33; --line-2:#2e3742;
+  --fg:#d8dee7; --fg-2:#9aa5b4; --fg-3:#647083;
+  --hot:#ffb547; --hot-dim:rgba(255,181,71,.16); --loop:#b993ff; --startup:#5fb3a9; --branch:#4a5463;
+  --c-client:#8b96a8; --c-http:#4cb6ac; --c-parse:#64a0f2; --c-queue:#9286ee; --c-sched:#cf86da;
+  --c-llama:#f08a5d; --c-graph:#9cc65b; --c-ggml:#58c6df; --c-samp:#f17a96; --c-resp:#59cc9c;
+  --sans:"IBM Plex Sans Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);overflow:hidden;margin:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+a{color:var(--c-parse)}
+
+.app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr;grid-template-columns:1fr 340px}
+.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:9px 16px;padding-top:calc(9px + env(safe-area-inset-top,0px));background:var(--bg-2);border-bottom:1px solid var(--line);z-index:5}
+.brand{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.brand b{font-weight:700;font-size:15px;letter-spacing:.01em}
+.brand span{font-family:var(--mono);font-size:11px;color:var(--fg-3)}
+.brand a{color:var(--fg-3);text-decoration:none;border-bottom:1px dotted var(--line-2)}
+.search{position:relative;flex:0 1 200px;min-width:160px}
+.search input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 52px 6px 28px;color:var(--fg);font:12px var(--mono)}
+.search input::placeholder{color:var(--fg-3)}
+.search svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);fill:var(--fg-3)}
+.search .count{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:11px var(--mono);color:var(--fg-3)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:3px 10px 3px 8px;font-size:12px;cursor:pointer;color:var(--fg-2);user-select:none}
+.chip i{width:8px;height:8px;border-radius:50%;display:block}
+.chip[aria-pressed="true"]{color:var(--fg);border-color:var(--fg-3);background:var(--panel-2)}
+.chip[aria-pressed="false"] i{opacity:.3}
+.chip .n{font:10px var(--mono);color:var(--fg-3)}
+.spacer{flex:1}
+.zoomctl{display:flex;align-items:center;gap:4px}
+.ibtn{border:1px solid var(--line-2);background:var(--panel);border-radius:6px;height:28px;min-width:28px;padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--fg-2)}
+.ibtn:hover{color:var(--fg);border-color:var(--fg-3)}
+.ibtn.primary{border-color:rgba(255,181,71,.5);color:var(--hot);background:var(--hot-dim)}
+.zoomctl .pct{font:11px var(--mono);color:var(--fg-3);width:42px;text-align:center}
+
+/* canvas */
+.canvas{position:relative;overflow:hidden;cursor:grab;touch-action:none;background-color:var(--bg);
+  background-image:radial-gradient(circle,#1d232c 1.1px,transparent 1.2px)}
+.canvas.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.wires .hit{pointer-events:stroke;stroke:transparent;stroke-width:14;fill:none;cursor:pointer}
+.wire{fill:none;stroke-width:1.6;transition:opacity .18s,stroke-width .12s}
+.wire.k-branch{stroke:var(--branch);stroke-dasharray:4 4}
+.wire.k-backend{stroke:#35505a;stroke-dasharray:2 4}
+.wire.k-startup{stroke:var(--startup);opacity:.55;stroke-dasharray:6 4}
+.wire.k-loop{stroke:var(--loop);stroke-dasharray:7 5;stroke-width:1.8}
+.wire.k-hot{stroke:var(--hot);stroke-width:2.2;opacity:.85}
+.wire.k-hot.flow{stroke-dasharray:10 8;animation:flow 1.1s linear infinite}
+.glow{fill:none;stroke:var(--hot);stroke-width:7;opacity:.10;filter:blur(3px);pointer-events:none}
+@keyframes flow{to{stroke-dashoffset:-36}}
+.wire.lit{stroke-width:3.2;opacity:1}
+.wire.k-branch.lit,.wire.k-backend.lit{stroke:#8b97a8}
+.wire.k-startup.lit{opacity:1}
+.wlabel{font:10.5px var(--mono);fill:var(--fg-3);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.wlabel.k-loop{fill:var(--loop)}
+.wlabel.k-hot{fill:#c99245}
+.dim-wires .wire:not(.lit),.dim-wires .glow{opacity:.1}
+.dim-wires .wlabel:not(.lit){opacity:.15}
+.trav{stroke:#fff3dc!important;opacity:1!important}
+.packet{fill:#fff3dc;filter:drop-shadow(0 0 6px var(--hot))}
+
+.lane-h{position:absolute;font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;padding-bottom:6px;border-bottom:1px solid var(--line);width:244px;display:flex;justify-content:space-between}
+.lane-h small{font:10px var(--mono);letter-spacing:0;text-transform:none;color:var(--fg-3)}
+.band{position:absolute;border:1px dashed #22413e;border-radius:10px;background:rgba(95,179,169,.03)}
+.band span{position:absolute;left:12px;top:-9px;padding:0 6px;background:var(--bg);font:600 10px var(--sans);letter-spacing:.14em;color:var(--startup);text-transform:uppercase}
+
+.node{position:absolute;width:244px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:7px;cursor:pointer;user-select:none;transition:opacity .18s,border-color .15s,box-shadow .15s;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.node .hd{display:flex;align-items:center;gap:7px;padding:6px 9px 5px;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;position:relative}
+.node .hd::before{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:3px;border-radius:7px 7px 0 0;background:var(--lc)}
+.node .tt{font-weight:600;font-size:13px;line-height:1.2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .bd{padding:6px 9px 8px;display:grid;gap:2px}
+.node .fn{font:11px/1.35 var(--mono);color:#c3cdda;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .loc{font:10px var(--mono);color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .tag{font:9.5px var(--mono);padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--fg-3);white-space:nowrap}
+.node.k-hot .tag{color:var(--hot);border-color:rgba(255,181,71,.4)}
+.node.k-startup .tag{color:var(--startup);border-color:rgba(95,179,169,.4)}
+.node .step{font:600 10px var(--mono);color:#1a1206;background:var(--hot);border-radius:3px;padding:0 4px;min-width:14px;text-align:center}
+.node .port{position:absolute;top:24px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--lc);box-sizing:border-box}
+.node .port.in{left:-5px}.node .port.out{right:-5px}
+.node.k-hot{border-color:#3a3226}
+.node.k-branch,.node.k-backend{background:#10141a}
+.node.k-branch .tt,.node.k-backend .tt{color:var(--fg-2)}
+.node:hover{border-color:var(--fg-3)}
+.node.sel{border-color:var(--hot);box-shadow:0 0 0 1px var(--hot),0 0 26px rgba(255,181,71,.22)}
+.node.cur{border-color:#fff3dc;box-shadow:0 0 0 2px #fff3dc,0 0 34px rgba(255,181,71,.45)}
+.node.visited{border-color:#6b5532}
+.dim-nodes .node:not(.lit){opacity:.28}
+.searching .node:not(.hit){opacity:.18}
+.searching .node.hit{border-color:var(--c-parse)}
+.node.dragging{cursor:grabbing;box-shadow:0 14px 30px rgba(0,0,0,.55);z-index:3}
+
+.tip{position:fixed;z-index:20;max-width:300px;background:#0c0f14;border:1px solid var(--line-2);border-radius:7px;padding:9px 11px;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:12.5px;color:var(--fg)}
+.tip b{display:block;font-size:12px;margin-bottom:3px;color:var(--hot)}
+.tip code{font:11px var(--mono);color:var(--fg-2)}
+
+/* inspector */
+.insp{background:var(--bg-2);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:16px;z-index:4}
+.insp h2{margin:0;font-size:19px;line-height:1.15;font-weight:700;text-wrap:balance}
+.insp .eyebrow{display:flex;gap:8px;align-items:center;font:600 10.5px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.insp .eyebrow i{width:8px;height:8px;border-radius:2px;background:var(--lc)}
+.insp .fnline{font:12px var(--mono);color:#c3cdda;word-break:break-word;margin-top:6px}
+.insp .src{display:inline-flex;gap:6px;align-items:center;font:11.5px var(--mono);margin-top:6px;color:var(--c-parse);text-decoration:none;word-break:break-all}
+.insp .src:hover{text-decoration:underline}
+.insp p{margin:0;color:var(--fg-2);font-size:13.5px;line-height:1.55;max-width:62ch}
+.sec{display:grid;gap:7px}
+.sec > h3{margin:0;font:600 10.5px var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-3)}
+.payload{margin:0;background:#080a0d;border:1px solid var(--line);border-left:2px solid var(--hot);border-radius:5px;padding:9px 10px;font:11px/1.5 var(--mono);color:#e9d5b0;white-space:pre-wrap;word-break:break-word;overflow-x:auto}
+.payload .c{color:var(--fg-3)}
+.calls{list-style:none;margin:0;padding:0;display:grid;gap:1px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.calls li{background:var(--panel);padding:6px 9px;display:flex;flex-direction:column;gap:1px}
+.calls li span{font:11px var(--mono);color:#c3cdda;min-width:0;word-break:break-word}
+.calls li a{font:10.5px var(--mono);color:var(--fg-3);white-space:nowrap;text-decoration:none}
+.calls li a:hover{color:var(--c-parse)}
+.jumps{display:flex;flex-wrap:wrap;gap:5px}
+.jump{border:1px solid var(--line-2);background:var(--panel);border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--fg-2);text-align:left}
+.jump:hover{color:var(--fg);border-color:var(--fg-3)}
+.jump i{width:6px;height:6px;border-radius:50%;background:var(--lc);flex:none}
+.jump.hot{border-color:rgba(255,181,71,.35);color:var(--fg)}
+.jump em{font-style:normal;font:10px var(--mono);color:var(--fg-3)}
+.navrow{display:flex;gap:6px}
+.navrow .ibtn{flex:1}
+.narr{border:1px solid rgba(255,181,71,.35);background:linear-gradient(180deg,rgba(255,181,71,.08),transparent);border-radius:7px;padding:10px 12px;display:grid;gap:5px}
+.narr .k{font:600 10.5px var(--mono);color:var(--hot);letter-spacing:.04em}
+.narr p{color:var(--fg)}
+.empty{color:var(--fg-2);display:grid;gap:12px}
+.empty ol{margin:0;padding-left:18px;display:grid;gap:6px}
+.kbd{font:10.5px var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--fg-2)}
+.closeinsp{display:none}
+.tip .ex{display:block;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--fg-2);font-size:12px}
+.tip .ex i{font-style:normal;font:600 10px var(--mono);color:var(--c-parse);letter-spacing:.04em;margin-right:4px}
+.tip .hint{display:block;margin-top:6px;font:10.5px var(--mono);color:var(--fg-3)}
+.card{position:absolute;z-index:4;width:310px;box-sizing:border-box;background:#0d1116;border:1px solid rgba(255,181,71,.55);border-radius:9px;box-shadow:0 14px 40px rgba(0,0,0,.6),0 0 0 4px rgba(255,181,71,.06);padding:11px 12px 10px;display:grid;gap:8px}
+.card .top{display:flex;align-items:center;gap:8px}
+.card .top small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em;flex:1}
+.card .x{border:0;background:none;color:var(--fg-3);cursor:pointer;font-size:14px;padding:0 2px;line-height:1}
+.card .x:hover{color:var(--fg)}
+.card h4{margin:0;font-size:15px;line-height:1.2;text-wrap:balance}
+.card .fnc{font:10.5px var(--mono);color:var(--fg-3);margin-top:2px;word-break:break-word}
+.card p{margin:0;font-size:13px;line-height:1.5;color:var(--fg)}
+.card .ex{font-size:12px;color:var(--fg-2);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:6px 8px;line-height:1.45}
+.card .ex b{font:600 10px var(--mono);color:var(--c-parse);letter-spacing:.04em;margin-right:4px}
+.card .ex code{font:11px var(--mono);color:#c3cdda}
+.card .row{display:flex;gap:6px;align-items:center}
+.card .row .ibtn{height:30px}
+.card .row .grow{flex:1}
+.card .more{font-size:11.5px;color:var(--fg-3);background:none;border:0;cursor:pointer;padding:0;text-decoration:underline dotted}
+.card .more:hover{color:var(--fg)}
+.card::before{content:"";position:absolute;width:10px;height:10px;background:#0d1116;border-left:1px solid rgba(255,181,71,.55);border-bottom:1px solid rgba(255,181,71,.55);top:18px;left:-6px;transform:rotate(45deg)}
+.card.right::before{left:auto;right:-6px;transform:rotate(-135deg)}
+.card.below::before,.card.docked::before{display:none}
+@media (max-width:860px){ .card.docked{left:12px!important;right:12px;top:auto!important;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:auto} }
+
+/* transport */
+.transport{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(15,19,24,.94);border:1px solid var(--line-2);border-radius:10px;padding:7px 9px 7px 12px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:4;max-width:calc(100% - 32px);box-sizing:border-box}
+.transport .lbl{display:grid;min-width:0;width:300px}
+.transport .lbl small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em}
+.transport .lbl span{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.transport .prog{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:4px}
+.transport .prog b{display:block;height:100%;background:var(--hot);width:0;transition:width .3s}
+.transport .ibtn{height:30px;min-width:30px}
+.transport label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-2);white-space:nowrap;cursor:pointer}
+.transport input{accent-color:var(--hot)}
+
+.legend{position:absolute;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:5px;background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:11.5px;color:var(--fg-2);z-index:3}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend svg{flex:none}
+.mini{position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:rgba(15,19,24,.92);border:1px solid var(--line);border-radius:8px;z-index:3;cursor:pointer}
+.mini rect.v{fill:rgba(255,181,71,.07);stroke:var(--hot);stroke-width:1}
+
+@media (max-width: 1100px){ .legend{display:none} }
+@media (max-width: 860px){
+  .app{grid-template-columns:1fr}
+  .insp{position:fixed;left:0;right:0;bottom:0;max-height:52%;border-left:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px rgba(0,0,0,.5)}
+  .insp.closed{display:none}
+  .closeinsp{display:inline-flex;position:absolute;right:12px;top:12px}
+  .mini{display:none}
+  .transport .lbl{width:150px}
+  .transport label{display:none}
+  .search{flex:1 1 100%}
+}
+@media (prefers-reduced-motion: reduce){ .wire.k-hot.flow{animation:none} .node,.wire{transition:none} }
+</style>
+<style>
+/* Back link and forward-pass additions: phase switch, measured time on each node, kernel table. */
+.home{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px 0 7px;border:1px solid var(--line-2);border-radius:6px;color:var(--fg-2);text-decoration:none;font-size:12px;white-space:nowrap;flex:none}
+.home:hover{color:var(--fg);border-color:var(--fg-3)}
+.home svg{flex:none}
+.empty{grid-template-columns:minmax(0,1fr)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:7px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:none;padding:5px 11px;font-size:12px;color:var(--fg-2);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line-2)}
+.seg button[aria-pressed="true"]{background:var(--hot-dim);color:var(--hot)}
+.seg button:hover{color:var(--fg)}
+.node .ms{display:flex;align-items:center;gap:6px;font:10.5px var(--mono);color:var(--fg-2);white-space:nowrap}
+.node .ms .bar{flex:1;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+.node .ms .bar b{display:block;height:100%;background:var(--lc)}
+.node .ms.cpu{color:var(--fg-3)}
+.ktab{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:5px;overflow:hidden;font:11px/1.4 var(--mono)}
+.ktab th{text-align:left;font:600 10px var(--sans);letter-spacing:.06em;color:var(--fg-3);padding:5px 8px;background:var(--panel-2)}
+.ktab td{padding:5px 8px;border-top:1px solid var(--line);color:#c3cdda;vertical-align:top;word-break:break-word}
+.ktab td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--fg)}
+.ktab td.g{white-space:nowrap;color:var(--fg-3)}
+.ktab tr.help td{color:var(--fg-3)}
+.ktab tfoot td{color:var(--fg-2);background:var(--panel)}
+.meas{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px;color:var(--fg-2)}
+.meas b{font:500 13px var(--mono);color:var(--fg);font-variant-numeric:tabular-nums;text-align:right}
+.refs{list-style:none;margin:0;padding:0;display:grid;gap:1px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.refs li{background:var(--panel);padding:6px 9px;display:grid;gap:2px}
+.refs li span{font-size:12.5px;color:var(--fg-2)}
+.refs li a{font:10.5px var(--mono);color:var(--fg-3);text-decoration:none;word-break:break-all}
+.refs li a:hover{color:var(--c-parse)}
+.phnote{border-left:2px solid var(--lc);padding-left:10px}
+@media (max-width: 860px){ .seg button{padding:5px 8px} .brand .wide{display:none} }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <a class="home" href="tracers.html" title="Back to all tracers"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3 2 8l5 5M2.5 8H14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>All tracers</a>
+    <div class="brand"><b>llama.cpp</b><span>inference tracer · <a id="commitlink" href="https://github.com/ggml-org/llama.cpp/tree/2ca15f5404760548c39e7b92bd43116a09414a1a" target="_blank" rel="noopener">2ca15f5</a><span class="wide"> · Llama 3.1 8B Q4_K_M · RTX 4090</span></span></div>
+    <div class="seg" id="phase" role="group" aria-label="Which forward pass">
+      <button data-phase="decode" aria-pressed="true" title="One generated token, replayed as a CUDA graph">Decode step</button>
+      <button data-phase="prefill" aria-pressed="false" title="The 41-token prompt, launched kernel by kernel">Prompt pass</button>
+    </div>
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.7 9.6a5.5 5.5 0 1 0-1.1 1.1l3.9 3.9 1.1-1.1-3.9-3.9zM6.3 10.3a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+      <input id="q" type="search" placeholder="Search ops, kernels, files…" aria-label="Search nodes" autocomplete="off">
+      <span class="count" id="qcount"></span>
+    </div>
+    <div class="spacer"></div>
+    <div class="zoomctl">
+      <button class="ibtn primary" id="btnHot" title="Fit one layer">Layer</button>
+      <button class="ibtn" id="btnOut" aria-label="Zoom out">−</button>
+      <span class="pct" id="pct">100%</span>
+      <button class="ibtn" id="btnIn" aria-label="Zoom in">+</button>
+      <button class="ibtn" id="btnFit" title="Fit everything (F)">Fit</button>
+    </div>
+  </header>
+
+  <main class="canvas" id="canvas" aria-label="Forward pass data-flow graph">
+    <div class="world" id="world">
+      <svg class="wires" id="wires" width="1" height="1">
+        <defs></defs>
+        <g id="glows"></g><g id="wiresG"></g><g id="labels"></g><g id="hits"></g>
+        <circle class="packet" id="packet" r="5" cx="-99999" cy="-99999"/>
+      </svg>
+    </div>
+
+    <div class="legend" aria-label="Legend">
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#ffb547" stroke-width="2.2" stroke-dasharray="10 6"/></svg>Data path of one forward pass</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#b993ff" stroke-width="1.8" stroke-dasharray="7 5"/></svg>Repeats: next layer, next token</div>
+      <div><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#4a5463" stroke-width="1.6" stroke-dasharray="4 4"/></svg>Last layer only</div>
+    </div>
+
+    <div class="transport" id="transport">
+      <button class="ibtn" id="tFirst" aria-label="Restart trace" title="Restart">⏮</button>
+      <button class="ibtn" id="tPrev" aria-label="Previous step" title="Previous (←)">◀</button>
+      <button class="ibtn primary" id="tPlay" aria-label="Play trace" title="Play / pause (Space)">▶ Trace</button>
+      <button class="ibtn" id="tNext" aria-label="Next step" title="Next (→)">▶▶</button>
+      <div class="lbl"><small id="tStep">TRACE A FORWARD PASS</small><span id="tName">Press ▶ to follow one token through the model</span><div class="prog"><b id="tProg"></b></div></div>
+      <label><input type="checkbox" id="tFollow" checked> Follow</label>
+    </div>
+
+    <div class="card" id="card" hidden role="dialog" aria-label="Step details"></div>
+    <svg class="mini" id="mini" width="190" height="104" aria-label="Minimap"></svg>
+  </main>
+
+  <aside class="insp" id="insp" aria-live="polite"></aside>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script id="measured" type="application/json">{"commit":"2ca15f5404760548c39e7b92bd43116a09414a1a","capture":"2026-10-07","gpu":"NVIDIA GeForce RTX 4090","peakGBps":1008,"promptTokens":41,"genTokens":64,"models":{"q4_k_m":{"label":"Q4_K_M","weightsBytes":4617396480,"embdMiB":281.8,"typeMix":{"output.weight":{"Q6_K":1},"output_norm.weight":{"F32":1},"rope_freqs.weight":{"F32":1},"token_embd.weight":{"Q4_K":1},"attn_k":{"Q4_K":32},"attn_norm":{"F32":32},"attn_output":{"Q4_K":32},"attn_q":{"Q4_K":32},"attn_v":{"Q6_K":16,"Q4_K":16},"ffn_down":{"Q6_K":16,"Q4_K":16},"ffn_gate":{"Q4_K":32},"ffn_norm":{"F32":32},"ffn_up":{"Q4_K":32}},"bench":{"pp":4005.7,"ppSd":632.5,"tg":154.2,"tgSd":1.4},"server":{"cache_n":0,"prompt_n":41,"prompt_ms":25.646,"prompt_per_token_ms":0.6255121951219512,"prompt_per_second":1598.6898541682913,"predicted_n":64,"predicted_ms":470.261,"predicted_per_token_ms":7.4644603174603175,"predicted_per_second":133.9681581079443},"nodes":998,"nLayer":32,"graph":{"prefill":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,32,41,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,8,41,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,41,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,41,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,41,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,41,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,41,1,1],"src1":"CUDA0#embd#0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,41,1,1],"src1":"ffn_up-0","s1":[14336,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,41,1,1],"out":[4096,41,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,41,1,1],"src1":"ffn_inp-0","s1":[4096,41,1,1],"out":[4096,41,1,1]}],"decode":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,32,1,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,8,1,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,1,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,1,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,1,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,1,1,1],"src1":"CUDA0#embd#0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,1,1,1],"src1":"ffn_up-0","s1":[14336,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,1,1,1],"out":[4096,1,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,1,1,1],"src1":"ffn_inp-0","s1":[4096,1,1,1],"out":[4096,1,1,1]}],"pre":[{"name":"embd","op":"GET_ROWS","type":"f32","src0":"token_embd.weight","s0":[4096,128256,1,1],"src1":"inp_tokens","s1":[41,1,1,1],"out":[4096,41,1,1]}],"post":[{"name":"norm","op":"RMS_NORM","type":"f32","src0":"l_out-31","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"result_norm","op":"MUL","type":"f32","src0":"norm","s0":[4096,1,1,1],"src1":"output_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"result_output","op":"MUL_MAT","type":"f32","src0":"output.weight","s0":[4096,128256,1,1],"src1":"result_norm","s1":[4096,1,1,1],"out":[128256,1,1,1]}]},"prefill":{"kernels":1022,"busyUs":9320.7,"wallUs":24250,"byOp":{"attn_norm":{"us":99.9,"share":0.0107,"kernels":32},"qkv":{"us":1711.5,"share":0.1836,"kernels":288,"weight_mb":448.5,"gb_per_s":274.8},"rope":{"us":122.9,"share":0.0132,"kernels":64},"kv_write":{"us":97,"share":0.0104,"kernels":64},"attention":{"us":452.5,"share":0.0485,"kernels":64},"o_proj":{"us":797.9,"share":0.0856,"kernels":128,"weight_mb":288,"gb_per_s":378.5},"ffn_norm":{"us":99,"share":0.0106,"kernels":32},"ffn_gate_up":{"us":3361,"share":0.3606,"kernels":219,"weight_mb":2016,"gb_per_s":629},"ffn_down":{"us":2117.7,"share":0.2272,"kernels":126,"weight_mb":1239,"gb_per_s":613.5},"out_trim":{"us":2.7,"share":0.0003,"kernels":2},"output_norm":{"us":3.1,"share":0.0003,"kernels":1},"lm_head":{"us":455.3,"share":0.0488,"kernels":2,"weight_mb":411,"gb_per_s":946.5}},"totalUs":9320.7,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.68,"grid":"41×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.86,"grid":"128×1×1"},{"op":"qkv","role":"q_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.62,"grid":"128×4×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.72,"grid":"1312×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":8.32,"grid":"128×1×1"},{"op":"qkv","role":"v_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":7.2,"grid":"128×1×1"},{"op":"qkv","role":"k_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.44,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.5,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":8.42,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.25,"grid":"128×1×1"},{"op":"o_proj","role":"o_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.62,"grid":"128×4×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.7,"grid":"656×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.07,"grid":"41×1×1"},{"op":"ffn_gate_up","role":"gate:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"ffn_gate_up","role":"gate","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":42.76,"grid":"128×1×1"},{"op":"ffn_gate_up","role":"gate:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.55,"grid":"128×4×1"},{"op":"ffn_gate_up","role":"up:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.41,"grid":"41×8×1"},{"op":"ffn_gate_up","role":"up","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":52.39,"grid":"128×1×1"},{"op":"ffn_gate_up","role":"up:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.46,"grid":"128×4×1"},{"op":"ffn_gate_up","role":"swiglu","kernel":"unary_gated_op_kernel\u003c&op_silu, float>","us":3.1,"grid":"2296×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.89,"grid":"41×28×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":72.68,"grid":"128×1×1"},{"op":"ffn_down","role":"down:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":3.58,"grid":"128×4×1"},{"op":"ffn_down","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":2.14,"grid":"656×1×1"}],"last":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.01,"grid":"41×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.47,"grid":"41×8×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":17.7,"grid":"128×1×1"},{"op":"qkv","role":"q_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.58,"grid":"128×4×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.4,"grid":"1312×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c0, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_q\u003cQ6_K, 48, 0, 30>","us":10.34,"grid":"128×1×1"},{"op":"qkv","role":"v_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ6_K, 48, 0, 30>","us":6.37,"grid":"128×4×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":7.78,"grid":"128×1×1"},{"op":"qkv","role":"k_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":6.34,"grid":"128×4×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.44,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.63,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.34,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":12.22,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_mmq_q8_1\u003c1, 0>","us":1.44,"grid":"41×8×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_q\u003cQ4_K, 48, 0, 30>","us":18.47,"grid":"128×1×1"},{"op":"o_proj","role":"o_proj:fixup","kernel":"mul_mat_q_stream_k_fixup\u003cQ4_K, 48, 0, 30>","us":3.52,"grid":"128×4×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.25,"grid":"16×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.1,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"16×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":77.45,"grid":"14336×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"56×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 1, 0, 0>","us":56.74,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.1,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head:quant_act","kernel":"quantize_q8_1","us":1.15,"grid":"16×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":454.15,"grid":"128256×1×1"}]},"decode":{"steps":63,"kernels":646,"busyMedianUs":6249.7,"busyMinUs":5800.1,"busyMaxUs":7929.8,"byOp":{"attn_norm":{"us":92.3,"share":0.0158,"kernels":32,"us_min":88.3,"us_max":254.1},"qkv":{"us":734.5,"share":0.1255,"kernels":192,"weight_mb":448.5,"gb_per_s":640.3,"us_min":720.8,"us_max":1955.9},"rope":{"us":71.4,"share":0.0122,"kernels":64,"us_min":67.1,"us_max":78.6},"kv_write":{"us":70.4,"share":0.012,"kernels":64,"us_min":66.6,"us_max":411},"attention":{"us":155.3,"share":0.0265,"kernels":64,"us_min":148.1,"us_max":602.6},"o_proj":{"us":398.9,"share":0.0682,"kernels":65,"weight_mb":288,"gb_per_s":757.1,"us_min":393.9,"us_max":966.7},"ffn_norm":{"us":92.8,"share":0.0159,"kernels":32,"us_min":88.4,"us_max":428.7},"ffn_gate_up":{"us":2312.8,"share":0.3952,"kernels":64,"weight_mb":2016,"gb_per_s":914,"us_min":2306.8,"us_max":3553.2},"ffn_down":{"us":1461.9,"share":0.2498,"kernels":64,"weight_mb":1239,"gb_per_s":888.7,"us_min":1455.7,"us_max":2885.9},"out_trim":{"us":2.5,"share":0.0004,"kernels":2,"us_min":2.3,"us_max":2.8},"output_norm":{"us":2.9,"share":0.0005,"kernels":1,"us_min":2.7,"us_max":3.1},"lm_head":{"us":456.3,"share":0.078,"kernels":2,"weight_mb":411,"gb_per_s":944.5,"us_min":455,"us_max":1040.4}},"totalUs":5851.9,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.91,"grid":"1×1×1"},{"op":"qkv","role":"q_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 0, 0, 0>","us":11.27,"grid":"4096×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":1.18,"grid":"32×1×1"},{"op":"qkv","role":"v_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":5.25,"grid":"1024×1×1"},{"op":"qkv","role":"k_proj:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 0, 0, 0>","us":4,"grid":"1024×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.06,"grid":"8×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.12,"grid":"4×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.12,"grid":"4×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_vec\u003c128, 1, F16, F16, 0>","us":3.62,"grid":"1×2×32"},{"op":"attention","role":"attention","kernel":"flash_attn_combine_results\u003c128>","us":1.28,"grid":"1×32×1"},{"op":"o_proj","role":"o_proj:quant_act","kernel":"quantize_q8_1","us":1.02,"grid":"16×1×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":11.43,"grid":"4096×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.91,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up:quant_act","kernel":"quantize_q8_1","us":1.06,"grid":"16×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_q\u003cQ4_K, 1, 1, 0, 0>","us":71.91,"grid":"14336×1×1"},{"op":"ffn_down","role":"down:quant_act","kernel":"quantize_q8_1","us":1.09,"grid":"56×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 1, 0, 0>","us":52.68,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.31,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.22,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.88,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head:quant_act","kernel":"quantize_q8_1","us":1.02,"grid":"16×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_q\u003cQ6_K, 1, 0, 0, 0>","us":455.24,"grid":"128256×1×1"}],"identical":true},"matmulBw":[{"role":"q_proj","types":["Q4_K"],"mib":9,"us":11.27,"gbps":837.7},{"role":"v_proj","types":["Q6_K"],"mib":3.28,"us":5.25,"gbps":655.6},{"role":"k_proj","types":["Q4_K"],"mib":2.25,"us":4,"gbps":589.8},{"role":"o_proj","types":["Q4_K"],"mib":9,"us":11.43,"gbps":826},{"role":"gate_up","types":["Q4_K"],"mib":63,"us":71.91,"gbps":918.7},{"role":"down","types":["Q6_K"],"mib":45.94,"us":52.68,"gbps":914.4},{"role":"lm_head","types":["Q6_K"],"mib":410.98,"us":455.24,"gbps":946.6}]},"f16":{"label":"F16","weightsBytes":15010382080,"embdMiB":1002,"typeMix":{"rope_freqs.weight":{"F32":1},"token_embd.weight":{"F16":1},"attn_norm":{"F32":32},"ffn_down":{"F16":32},"ffn_gate":{"F16":32},"ffn_up":{"F16":32},"ffn_norm":{"F32":32},"attn_k":{"F16":32},"attn_output":{"F16":32},"attn_q":{"F16":32},"attn_v":{"F16":32},"output.weight":{"F16":1},"output_norm.weight":{"F32":1}},"bench":{"pp":1891.5,"ppSd":130.3,"tg":54.4,"tgSd":0.2},"server":{"cache_n":0,"prompt_n":41,"prompt_ms":100.886,"prompt_per_token_ms":2.460634146341463,"prompt_per_second":406.3993021826616,"predicted_n":64,"predicted_ms":1226.318,"predicted_per_token_ms":19.46536507936508,"predicted_per_second":51.37329795371184},"nodes":998,"nLayer":32,"graph":{"prefill":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,32,41,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,41,1,1],"out":[1024,41,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,41,1,1],"src1":null,"s1":null,"out":[128,8,41,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":"CUDA0#inp_pos#0","s1":[41,1,1,1],"out":[128,8,41,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,41,1],"src1":null,"s1":null,"out":[1024,41,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,41,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[41,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,32,41,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,41,1],"src1":null,"s1":null,"out":[128,41,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,41,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,41,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,41,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,41,1,1],"src1":"CUDA0#embd#0","s1":[4096,41,1,1],"out":[4096,41,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,41,1,1],"src1":null,"s1":null,"out":[4096,41,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,41,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,41,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,41,1,1],"src1":"ffn_up-0","s1":[14336,41,1,1],"out":[14336,41,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,41,1,1],"out":[4096,41,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,41,1,1],"src1":"ffn_inp-0","s1":[4096,41,1,1],"out":[4096,41,1,1]}],"decode":[{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"CUDA0#embd#0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.attn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_q.weight","s0":[4096,4096,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"Qcur-0","op":"RESHAPE","type":"f32","src0":"Qcur-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0","op":"ROPE","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,32,1,1]},{"name":"Vcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_v.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Vcur-0","op":"RESHAPE","type":"f32","src0":"Vcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_k.weight","s0":[4096,1024,1,1],"src1":"attn_norm-0","s1":[4096,1,1,1],"out":[1024,1,1,1]},{"name":"Kcur-0","op":"RESHAPE","type":"f32","src0":"Kcur-0","s0":[1024,1,1,1],"src1":null,"s1":null,"out":[128,8,1,1]},{"name":"Kcur-0","op":"ROPE","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":"CUDA0#inp_pos#0","s1":[1,1,1,1],"out":[128,8,1,1]},{"name":"Kcur-0 (view)","op":"VIEW","type":"f32","src0":"Kcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_k_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Kcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_k_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Vcur-0 (view)","op":"VIEW","type":"f32","src0":"Vcur-0","s0":[128,8,1,1],"src1":null,"s1":null,"out":[1024,1,1,1]},{"name":"cache_v_l0 (view)","op":"SET_ROWS","type":"f16","src0":"Vcur-0 (view)","s0":[1024,1,1,1],"src1":"CUDA0#attn_inp_v_idxs#0","s1":[1,1,1,1],"out":[1024,16384,1,1]},{"name":"Qcur-0 (view)","op":"VIEW","type":"f32","src0":"Qcur-0","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,32,1,1]},{"name":"Qcur-0 (view) (permuted)","op":"PERMUTE","type":"f32","src0":"Qcur-0 (view)","s0":[128,32,1,1],"src1":null,"s1":null,"out":[128,1,32,1]},{"name":"cache_k_l0 (view)","op":"VIEW","type":"f16","src0":"cache_k_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_k_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_k_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"cache_v_l0 (view)","op":"VIEW","type":"f16","src0":"cache_v_l0","s0":[1024,16384,1,1],"src1":null,"s1":null,"out":[128,8,256,1]},{"name":"cache_v_l0 (view) (permuted)","op":"PERMUTE","type":"f16","src0":"cache_v_l0 (view)","s0":[128,8,256,1],"src1":null,"s1":null,"out":[128,256,8,1]},{"name":"node_21","op":"FLASH_ATTN_EXT","type":"f32","src0":"Qcur-0 (view) (permuted)","s0":[128,1,32,1],"src1":"cache_k_l0 (view) (permuted)","s1":[128,256,8,1],"out":[128,32,1,1]},{"name":"kqv_out-0","op":"RESHAPE","type":"f32","src0":"node_21","s0":[128,32,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"attn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.attn_output.weight","s0":[4096,4096,1,1],"src1":"kqv_out-0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_inp-0","op":"ADD","type":"f32","src0":"attn_out-0","s0":[4096,1,1,1],"src1":"CUDA0#embd#0","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"norm-0","op":"RMS_NORM","type":"f32","src0":"ffn_inp-0","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"ffn_norm-0","op":"MUL","type":"f32","src0":"norm-0","s0":[4096,1,1,1],"src1":"blk.0.ffn_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"ffn_gate-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_gate.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_up-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_up.weight","s0":[4096,14336,1,1],"src1":"ffn_norm-0","s1":[4096,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_swiglu-0","op":"SWIGLU","type":"f32","src0":"ffn_gate-0","s0":[14336,1,1,1],"src1":"ffn_up-0","s1":[14336,1,1,1],"out":[14336,1,1,1]},{"name":"ffn_out-0","op":"MUL_MAT","type":"f32","src0":"blk.0.ffn_down.weight","s0":[14336,4096,1,1],"src1":"ffn_swiglu-0","s1":[14336,1,1,1],"out":[4096,1,1,1]},{"name":"l_out-0","op":"ADD","type":"f32","src0":"ffn_out-0","s0":[4096,1,1,1],"src1":"ffn_inp-0","s1":[4096,1,1,1],"out":[4096,1,1,1]}],"pre":[{"name":"embd","op":"GET_ROWS","type":"f32","src0":"token_embd.weight","s0":[4096,128256,1,1],"src1":"inp_tokens","s1":[41,1,1,1],"out":[4096,41,1,1]}],"post":[{"name":"norm","op":"RMS_NORM","type":"f32","src0":"l_out-31","s0":[4096,1,1,1],"src1":null,"s1":null,"out":[4096,1,1,1]},{"name":"result_norm","op":"MUL","type":"f32","src0":"norm","s0":[4096,1,1,1],"src1":"output_norm.weight","s1":[4096,1,1,1],"out":[4096,1,1,1]},{"name":"result_output","op":"MUL_MAT","type":"f32","src0":"output.weight","s0":[4096,128256,1,1],"src1":"result_norm","s1":[4096,1,1,1],"out":[128256,1,1,1]}]},"prefill":{"kernels":1114,"busyUs":21503.9,"wallUs":99367.5,"byOp":{"attn_norm":{"us":98.3,"share":0.0046,"kernels":32},"qkv":{"us":2298.5,"share":0.1069,"kernels":352,"weight_mb":1536,"gb_per_s":700.7},"rope":{"us":121.3,"share":0.0056,"kernels":64},"kv_write":{"us":96.5,"share":0.0045,"kernels":64},"attention":{"us":357.2,"share":0.0166,"kernels":64},"o_proj":{"us":1428.5,"share":0.0664,"kernels":128,"weight_mb":1024,"gb_per_s":751.7},"ffn_norm":{"us":98.6,"share":0.0046,"kernels":32},"ffn_gate_up":{"us":10212.5,"share":0.4749,"kernels":218,"weight_mb":7168,"gb_per_s":736},"ffn_down":{"us":4580.1,"share":0.213,"kernels":156,"weight_mb":3584,"gb_per_s":820.5},"out_trim":{"us":2.8,"share":0.0001,"kernels":2},"output_norm":{"us":3.3,"share":0.0002,"kernels":1},"lm_head":{"us":2206.3,"share":0.1026,"kernels":1,"weight_mb":1002,"gb_per_s":476.2}},"totalUs":21503.9,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.36,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.76,"grid":"164×1×1"},{"op":"qkv","role":"q_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":50.69,"grid":"16×16×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.44,"grid":"164×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":3.07,"grid":"1312×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":2.08,"grid":"164×1×1"},{"op":"qkv","role":"v_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":18.72,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"qkv","role":"k_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":12.61,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.41,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.57,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":11.52,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.24,"grid":"24×16×4"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"o_proj","role":"o_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":37.96,"grid":"16×16×1"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":2.27,"grid":"656×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.04,"grid":"41×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"ffn_gate_up","role":"gate","kernel":"ampere_h16816gemm_64x128_ldg8_stages_32x6_tn","us":138.54,"grid":"224×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":2.14,"grid":"574×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.86,"grid":"164×1×1"},{"op":"ffn_gate_up","role":"up","kernel":"ampere_h16816gemm_64x128_ldg8_stages_32x6_tn","us":136.33,"grid":"224×1×1"},{"op":"ffn_gate_up","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":2.14,"grid":"574×1×1"},{"op":"ffn_gate_up","role":"swiglu","kernel":"unary_gated_op_kernel\u003c&op_silu, float>","us":3.94,"grid":"2296×1×1"},{"op":"ffn_down","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.57,"grid":"574×1×1"},{"op":"ffn_down","role":"down","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":136.08,"grid":"16×16×2"},{"op":"ffn_down","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":2.4,"grid":"128×3×1"},{"op":"ffn_down","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.09,"grid":"164×1×1"},{"op":"ffn_down","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.98,"grid":"656×1×1"}],"last":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.07,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.18,"grid":"164×1×1"},{"op":"qkv","role":"q_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":38.05,"grid":"16×16×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":2.37,"grid":"1312×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"qkv","role":"v_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":11.52,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.19,"grid":"164×1×1"},{"op":"qkv","role":"k_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":11.62,"grid":"16×4×2"},{"op":"qkv","role":"other","kernel":"cublasLt::splitKreduce_kernel\u003c32, 16, int, __half, __half, __half, __half, 0, __half, __half, __half, 1, 0, 0>","us":1.31,"grid":"32×3×1"},{"op":"qkv","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":0.99,"grid":"41×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":1.38,"grid":"328×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.54,"grid":"164×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.47,"grid":"164×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_f16\u003c128, 128, 16, 4, 0, 0, 0>","us":8.32,"grid":"96×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_stream_k_fixup_uniform\u003c128, 16, 4>","us":2.27,"grid":"24×16×4"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003cfloat, __half>","us":1.15,"grid":"164×1×1"},{"op":"o_proj","role":"o_proj","kernel":"cutlass::Kernel2\u003ccutlass_80_wmma_tensorop_h161616gemm_32x32_128x2_tn_align8>","us":40.04,"grid":"16×16×1"},{"op":"o_proj","role":"convert","kernel":"convert_unary_cont_vec4\u003c__half, float>","us":1.12,"grid":"164×1×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.44,"grid":"1×16×1"},{"op":"o_proj","role":"residual","kernel":"k_bin_bcast\u003c&op_add, float, float, float, const float *>","us":1.22,"grid":"16×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.14,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_f\u003c__half, float, 1, 256, 1, 0>","us":255.32,"grid":"14336×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":124.91,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.41,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.44,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":3.3,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":2206.32,"grid":"128256×1×1"}]},"decode":{"steps":63,"kernels":453,"busyMedianUs":17997.9,"busyMinUs":16894.7,"busyMaxUs":20222.1,"byOp":{"attn_norm":{"us":94.4,"share":0.0057,"kernels":32,"us_min":94.2,"us_max":341.2},"qkv":{"us":1820.5,"share":0.1105,"kernels":96,"weight_mb":1536,"gb_per_s":884.7,"us_min":1819.2,"us_max":3334.8},"rope":{"us":67.5,"share":0.0041,"kernels":64,"us_min":66.8,"us_max":78.3},"kv_write":{"us":67.6,"share":0.0041,"kernels":64,"us_min":67.1,"us_max":81.4},"attention":{"us":149.3,"share":0.0091,"kernels":64,"us_min":148.9,"us_max":340.3},"o_proj":{"us":1180.3,"share":0.0716,"kernels":33,"weight_mb":1024,"gb_per_s":909.7,"us_min":1179.8,"us_max":2195.5},"ffn_norm":{"us":88.9,"share":0.0054,"kernels":32,"us_min":88.6,"us_max":575.3},"ffn_gate_up":{"us":7926.7,"share":0.4809,"kernels":32,"weight_mb":7168,"gb_per_s":948.2,"us_min":7927.5,"us_max":10867.4},"ffn_down":{"us":3980,"share":0.2415,"kernels":32,"weight_mb":3584,"gb_per_s":944.2,"us_min":3980.5,"us_max":5557.7},"out_trim":{"us":2.5,"share":0.0002,"kernels":2,"us_min":2.5,"us_max":2.9},"output_norm":{"us":2.9,"share":0.0002,"kernels":1,"us_min":2.9,"us_max":3.3},"lm_head":{"us":1101,"share":0.0668,"kernels":1,"weight_mb":1002,"gb_per_s":954.3,"us_min":1100.2,"us_max":2308.5}},"totalUs":16481.7,"layer0":[{"op":"attn_norm","role":"attn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.82,"grid":"1×1×1"},{"op":"qkv","role":"q_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":36.48,"grid":"4096×1×1"},{"op":"rope","role":"rope_q","kernel":"rope_norm\u003c1, 1, float, float>","us":1.12,"grid":"32×1×1"},{"op":"qkv","role":"v_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":10.24,"grid":"1024×1×1"},{"op":"qkv","role":"k_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":10.24,"grid":"1024×1×1"},{"op":"rope","role":"rope_k","kernel":"rope_norm\u003c1, 1, float, float>","us":0.99,"grid":"8×1×1"},{"op":"kv_write","role":"kv_write_k","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.09,"grid":"4×1×1"},{"op":"kv_write","role":"kv_write_v","kernel":"k_set_rows\u003cfloat, long, __half>","us":1.02,"grid":"4×1×1"},{"op":"attention","role":"attention","kernel":"flash_attn_ext_vec\u003c128, 1, F16, F16, 0>","us":3.52,"grid":"1×2×32"},{"op":"attention","role":"attention","kernel":"flash_attn_combine_results\u003c128>","us":1.22,"grid":"1×32×1"},{"op":"o_proj","role":"o_proj","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":37.41,"grid":"4096×1×1"},{"op":"ffn_norm","role":"ffn_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.78,"grid":"1×1×1"},{"op":"ffn_gate_up","role":"gate_up","kernel":"mul_mat_vec_f\u003c__half, float, 1, 256, 1, 0>","us":247.8,"grid":"14336×1×1"},{"op":"ffn_down","role":"down","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 1, 0>","us":124.52,"grid":"4096×1×1"}],"tail":[{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.25,"grid":"1×16×1"},{"op":"out_trim","role":"out_ids","kernel":"k_get_rows_float\u003cfloat, float>","us":1.28,"grid":"1×16×1"},{"op":"output_norm","role":"output_norm","kernel":"rms_norm_f32\u003c1024, 1, 0, 0>","us":2.94,"grid":"1×1×1"},{"op":"lm_head","role":"lm_head","kernel":"mul_mat_vec_f\u003c__half, __half, 1, 256, 0, 0>","us":1100.97,"grid":"128256×1×1"}],"identical":true},"matmulBw":[{"role":"q_proj","types":["F16"],"mib":32,"us":36.48,"gbps":919.7},{"role":"v_proj","types":["F16"],"mib":8,"us":10.24,"gbps":819.1},{"role":"k_proj","types":["F16"],"mib":8,"us":10.24,"gbps":819.1},{"role":"o_proj","types":["F16"],"mib":32,"us":37.41,"gbps":896.9},{"role":"gate_up","types":["F16"],"mib":224,"us":247.8,"gbps":947.9},{"role":"down","types":["F16"],"mib":112,"us":124.52,"gbps":943.1},{"role":"lm_head","types":["F16"],"mib":1002,"us":1100.97,"gbps":954.3}]}}}</script>
+<script>
+const MEASURED = JSON.parse(document.getElementById("measured").textContent);
+/* DATA START */
+const SHA = "2ca15f5404760548c39e7b92bd43116a09414a1a";
+const PHASES = ["decode","prefill"];
+
+const LANES = [
+  {id:"host", name:"Host", c:"--c-llama", sub:"CPU"},
+  {id:"attn", name:"Attention half", c:"--c-parse", sub:"each layer, GPU"},
+  {id:"ffn",  name:"Feed-forward half", c:"--c-graph", sub:"each layer, GPU"},
+  {id:"out",  name:"Output", c:"--c-ggml", sub:"after layer 31, GPU"},
+  {id:"samp", name:"Sampling", c:"--c-samp", sub:"CPU"},
+];
+
+/* Source references at SHA. Same format and rule as llama-cpp-forward.html:
+   `check` must appear within 3 lines of `line` (inference/capture/check-page-refs.mjs). */
+const REFS = {
+  tok: [
+    { file: 'tools/server/server-common.cpp', line: 1015, check: 'tokenize_input_prompts', what: 'the server tokenizes the templated prompt once, before the prompt pass' },
+    { file: 'src/llama-context.cpp', line: 1398, check: 'process_ubatch', what: 'each micro-batch: write the inputs, then run the graph' },
+  ],
+  embd: [
+    { file: 'src/llama-graph.cpp', line: 2405, check: 'ggml_get_rows(ctx0, tok_embd, inp->tokens)', what: 'the embedding lookup is a GET_ROWS on token_embd' },
+    { file: 'src/llama-model.cpp', line: 1606, check: 'there is very little benefit to offloading the input layer', what: 'the input layer always stays on the CPU' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 5736, check: 'case GGML_OP_GET_ROWS:', what: 'CUDA never asks to take GET_ROWS over from the CPU' },
+  ],
+  upload: [
+    { file: 'ggml/src/ggml-backend.cpp', line: 1828, check: 'for (int input_id = 0; input_id < split->n_inputs; input_id++) {', what: 'each split\'s inputs are copied to its device before it runs' },
+    { file: 'src/llama-context.cpp', line: 1412, check: 'res->can_reuse(gparams)', what: 'llama.cpp reuses the previous ggml graph when the batch has the same shape' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4536, check: '// Warmup: need at least 2 calls with no property change', what: 'a CUDA graph is captured after two identical calls, then replayed' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4490, check: 'cudaGraphLaunch(graph->instance, cuda_ctx->stream())', what: 'one launch replays every kernel of the step' },
+  ],
+  attn_norm: [
+    { file: 'src/llama-graph.cpp', line: 1609, check: 'ggml_rms_norm(ctx0, cur, hparams.f_norm_rms_eps)', what: 'build_norm: RMS_NORM, then MUL by the weight' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4240, check: '{ GGML_OP_RMS_NORM, GGML_OP_MUL }, {}', what: 'the two ops are fused into one kernel' },
+    { file: 'ggml/src/ggml-cuda/norm.cu', line: 143, check: 'rsqrtf(mean + eps)', what: 'one over the root mean square' },
+    { file: 'ggml/src/ggml-cuda/norm.cu', line: 152, check: 'scale * x[col] * mul[mul_col]', what: 'normalize and apply the weight in the same pass' },
+  ],
+  qkv: [
+    { file: 'src/llama-graph.cpp', line: 1707, check: 'Qcur = build_lora_mm(layer.wq, cur, layer.wq_s);', what: 'the query projection (key and value follow at :1721 and :1735)' },
+    { file: 'src/llama-graph.cpp', line: 1751, check: 'Kcur = ggml_reshape_3d(ctx0, Kcur, n_embd_head_k, n_head_k, n_tokens);', what: 'keys reshaped to 8 heads of 128' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 1895, check: 'ggml_cuda_should_use_mmvf(src0->type, cc, src0->ne, src0->nb, ne11)', what: 'the matmul dispatcher tries each kernel family in turn' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cuh', line: 3, check: 'MMVQ_MAX_BATCH_SIZE', what: 'matrix-vector kernels for batches of up to 8 tokens' },
+    { file: 'ggml/src/ggml-cuda/quantize.cu', line: 100, check: 'y[ib].ds = make_half2(d, sum);', what: 'activations quantized to Q8_1: a scale and a sum for every 32 values' },
+    { file: 'ggml/src/ggml-cuda/common.cuh', line: 741, check: 'return __dp4a(a, b, c);', what: 'decode: four 8-bit multiply-adds in one instruction' },
+    { file: 'ggml/src/ggml-cuda/mma.cuh', line: 1084, check: 'mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32', what: 'prompt pass: the 8-bit integer tensor-core instruction' },
+  ],
+  rope: [
+    { file: 'src/llama-model.cpp', line: 3111, check: 'return LLAMA_ROPE_TYPE_NORM;', what: 'Llama uses the adjacent-pair layout' },
+    { file: 'src/models/llama.cpp', line: 140, check: 'ggml_tensor * rope_factors = model.get_rope_factors(cparams, il);', what: 'the Llama 3.1 frequency divisors are passed to every rope' },
+    { file: 'ggml/src/ggml-cuda/rope.cu', line: 114, check: 'rope_yarn<forward>(theta_base/freq_factor, freq_scale', what: 'each angle divided by its divisor' },
+    { file: 'ggml/src/ggml-cuda/rope.cu', line: 119, check: 'store_coaelsced(x0 * cos_theta - x1 * sin_theta, x0 * sin_theta + x1 * cos_theta);', what: 'the rotation of one pair' },
+  ],
+  kv_write: [
+    { file: 'src/llama-kv-cache.cpp', line: 1360, check: 'return ggml_set_rows(ctx, k, k_cur, k_idxs);', what: 'keys written into their cells' },
+    { file: 'src/llama-kv-cache.cpp', line: 1499, check: 'data[s*sinfo.size() + i] = offs + sinfo.idxs[s][i];', what: 'row index = stream offset + cell' },
+    { file: 'src/llama-kv-cache.cpp', line: 1356, check: 'k = ggml_reshape_2d(ctx, k, n_embd_gqa, kv_size*n_stream);', what: 'with several streams the cache is reshaped first' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 3634, check: '{ GGML_OP_ROPE, GGML_OP_VIEW, GGML_OP_SET_ROWS }', what: 'the RoPE + write fusion needs these three nodes back to back' },
+  ],
+  attention: [
+    { file: 'src/llama-graph.cpp', line: 2664, check: 'ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale', what: 'one fused flash-attention op' },
+    { file: 'src/llama-kv-cache.cpp', line: 1678, check: 'if (p0 > p1) {', what: 'the mask hides later positions' },
+    { file: 'src/llama-kv-cache.cpp', line: 1265, check: 'std::max(n_pad, 256u)', what: 'the attended span is padded to 256 cells' },
+    { file: 'ggml/src/ggml-cuda/fattn.cu', line: 647, check: 'return BEST_FATTN_KERNEL_VEC;', what: 'one token on Ada: the vector kernel' },
+    { file: 'ggml/src/ggml-cuda/fattn.cu', line: 664, check: 'return BEST_FATTN_KERNEL_MMA_F16;', what: 'otherwise the tensor-core kernel' },
+    { file: 'ggml/src/ggml-cuda/fattn-vec.cuh', line: 110, check: 'K += nb13*sequence + nb12*(head / gqa_ratio);', what: 'query head h reads key-value head h / 4' },
+    { file: 'ggml/src/ggml-cuda/fattn-vec.cuh', line: 298, check: 'const float KQ_max_scale = expf(KQ_max[j] - KQ_max_new[j]);', what: 'online softmax: rescale when the running maximum grows' },
+    { file: 'ggml/src/ggml-cuda/fattn-common.cuh', line: 977, check: 'dst[tid] = VKQ_numerator / VKQ_denominator;', what: 'combine: merge the parallel halves and divide by the sum' },
+  ],
+  o_proj: [
+    { file: 'src/models/llama.cpp', line: 178, check: 'ggml_add(ctx0, cur, inpSA)', what: 'the residual add after attention' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4164, check: '// mul_mat + add', what: 'a matmul followed by an add becomes one kernel' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cu', line: 814, check: 'result += x_biases[j];', what: 'the add happens as the matmul writes its result' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 1815, check: 'tensor->op == GGML_OP_MUL_MAT && dst->ne[1] != 1', what: 'matmul fusion only for a single output row, so not in the prompt pass' },
+  ],
+  out_trim: [
+    { file: 'src/models/llama.cpp', line: 174, check: 'il == n_layer - 1 && inp_out_ids', what: 'in the last layer, keep only the rows that need logits' },
+    { file: 'tools/server/server-context.cpp', line: 3795, check: 'batch.set_output(batch.size() - 1, true);', what: 'the server asks for logits for the last prompt token only' },
+  ],
+  ffn_norm: [
+    { file: 'src/models/llama.cpp', line: 184, check: 'ffn_norm', what: 'the second norm of the layer, with its own weight' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4240, check: '{ GGML_OP_RMS_NORM, GGML_OP_MUL }, {}', what: 'fused into one kernel, like the attention norm' },
+  ],
+  ffn_gate_up: [
+    { file: 'src/llama-graph.cpp', line: 1804, check: 'build_lora_mm(up, cur)', what: 'the up projection' },
+    { file: 'src/llama-graph.cpp', line: 1826, check: 'cur = build_lora_mm(gate, cur);', what: 'the gate projection, on the same input' },
+    { file: 'src/llama-graph.cpp', line: 1869, check: 'ggml_swiglu_split(ctx0, cur, tmp)', what: 'SwiGLU as one GLU op' },
+    { file: 'ggml/src/ggml-cuda/ggml-cuda.cu', line: 4027, check: '{ op, op, GGML_OP_GLU }', what: 'gate, up and GLU fused into one matrix-vector kernel' },
+    { file: 'ggml/src/ggml-cuda/mmvq.cu', line: 823, check: 'result *= ggml_cuda_op_silu_single(gate_value);', what: 'SiLU of the gate applied as the result is written' },
+    { file: 'ggml/src/ggml-cuda/mmq.cu', line: 371, check: 'if (turing_mma_available(cc)) {', what: 'prompt pass: tensor-core MMQ on Turing and newer' },
+  ],
+  ffn_down: [
+    { file: 'src/llama-graph.cpp', line: 1944, check: 'cur = build_lora_mm(down, cur);', what: 'the down projection' },
+    { file: 'src/models/llama.cpp', line: 220, check: 'cur = ggml_add(ctx0, cur, ffn_inp);', what: 'the second residual add, fused into the down matmul for one token' },
+  ],
+  output_norm: [
+    { file: 'src/models/llama.cpp', line: 231, check: 'model.output_norm, NULL', what: 'the final RMS norm after layer 31' },
+  ],
+  lm_head: [
+    { file: 'src/models/llama.cpp', line: 240, check: 'build_lora_mm(model.output, cur, model.output_s)', what: 'the output head matmul' },
+    { file: 'ggml/src/ggml-common.h', line: 326, check: 'Effectively 4.5 bits per weight', what: 'the Q4_K block, 144 bytes per 256 weights (the head itself is Q6_K)' },
+  ],
+  logits: [
+    { file: 'src/llama-context.cpp', line: 1948, check: 'ggml_backend_tensor_get_async(backend_res, t_logits, logits_out', what: 'logits copied back to host memory' },
+    { file: 'src/llama-context.cpp', line: 4002, check: 'llama_get_logits_ith', what: 'the sampler reads its row through this call' },
+  ],
+  sample: [
+    { file: 'common/sampling.cpp', line: 602, check: 'common_sampler_sample', what: 'run the sampler chain on one logits row and draw a token' },
+  ],
+  detok: [
+    { file: 'common/sampling.cpp', line: 473, check: 'common_sampler_accept', what: 'record the token for penalties and grammar state' },
+    { file: 'tools/server/server-context.cpp', line: 4084, check: 'common_token_to_piece', what: 'token id to text' },
+  ],
+};
+
+/* Find one ggml node of the layer-0 graph (or the pre/post nodes) by name, op and occurrence. */
+function graphPick(m, ph, [name, op, nth]) {
+  const pool = [...m.graph[ph], ...m.graph.post];
+  return pool.filter(n => n.name === name && n.op === op)[nth || 0] || null;
+}
+
+/* k: hot | branch.  col,row = grid position.  ops = measured op groups.  g = ggml nodes [name, op, nth].
+   ph = what differs between the decode step and the prompt pass. */
+const N = [
+/* ---------- host ---------- */
+{id:"tok",col:0,row:0,k:"hot",t:"Token in",fn:"inp_tokens",refs:["tok"],
+ n:"A decode step starts from one token id: the one sampled at the end of the previous step.",
+ d:"llama_context::process_ubatch writes the batch into the graph's input tensors: token ids, positions, which KV cells to write, the attention mask and which rows need logits.",
+ ph:{decode:"Decode: 1 token. Here, one of the 64 tokens of the reply.",prefill:"Prompt pass: all 41 tokens of the templated prompt \"Why is the sky blue?\" at once."}},
+{id:"embd",col:0,row:1,k:"hot",t:"Embedding lookup",fn:"GET_ROWS(token_embd, inp_tokens)",refs:["embd"],
+ n:"Each token id selects one row of the 128,256 × 4,096 embedding table. This runs on the CPU.",
+ d:"token_embd (282 MiB as Q4_K) stays in host memory: llama.cpp never offloads the input layer, because a lookup reads one row per token. The scheduler makes this GET_ROWS its own split on the CPU, split #0, and dequantizes the selected rows to f32. This 4,096-wide vector is the residual stream that every layer reads and adds to."},
+{id:"upload",col:0,row:2,k:"hot",t:"Inputs to the GPU",fn:"ggml_backend_sched_compute_splits",refs:["upload"],
+ n:"Six small host-to-device copies start every pass, then the rest of the model runs as one split on the GPU.",
+ d:"Split #1 is the whole model on CUDA0. Before it runs, the scheduler copies its 6 inputs: the embeddings, positions, K and V cache slot indices, the mask and the output row ids.",
+ ph:{decode:"Decode: the step has the same shape as the last one, so llama.cpp reuses the ggml graph and the CUDA backend replays one captured CUDA graph: one cudaGraphLaunch runs all 646 kernels.",prefill:"Prompt pass: no CUDA graph. One is captured only after two identical calls, and a 41-token pass happens once, so its 1,022 kernels are launched one at a time."}},
+
+/* ---------- attention half ---------- */
+{id:"attn_norm",col:1,row:0,k:"hot",t:"Attention norm",fn:"RMS_NORM, MUL(attn_norm.weight)",ops:["attn_norm"],g:[["norm-0","RMS_NORM",0],["attn_norm-0","MUL"]],refs:["attn_norm"],
+ n:"Scale the residual stream to unit root mean square, then multiply by a learned weight.",
+ d:"x ÷ √(mean(x²) + 1e-5) × w. RMS_NORM and MUL are two ggml ops; the CUDA backend fuses them into one rms_norm_f32 kernel that reads the 4,096 values once. Every layer starts here, from the residual stream the previous layer left."},
+{id:"qkv",col:1,row:1,k:"hot",t:"Q, K and V projections",fn:"MUL_MAT × 3 (wq, wk, wv)",ops:["qkv"],g:[["Qcur-0","MUL_MAT"],["Kcur-0","MUL_MAT"],["Vcur-0","MUL_MAT"]],refs:["qkv"],
+ n:"Three quantized matrix multiplies: 32 query heads, and 8 key and 8 value heads, of 128 values each.",
+ d:"Q uses a 4,096 × 4,096 matrix; K and V use 4,096 × 1,024 each, because each key-value head serves 4 query heads (grouped-query attention). Before every quantized matmul a small kernel quantizes the activations to Q8_1, so both operands are 8-bit or less.",
+ ph:{decode:"Decode: mul_mat_vec_q, a matrix-vector kernel with one block per output row, multiplying 8-bit values with dp4a.",prefill:"Prompt pass: mul_mat_q on int8 tensor cores, a 128-block stream-k grid (one block per SM) plus a fixup kernel."}},
+{id:"rope",col:1,row:2,k:"hot",t:"RoPE",fn:"ROPE(Q), ROPE(K)",ops:["rope"],g:[["Qcur-0","ROPE"],["Kcur-0","ROPE"]],refs:["rope"],
+ n:"Rotate pairs of Q and K values by angles set by the token's position. V is not rotated.",
+ d:"Llama 3.1 rotates adjacent pairs, with base 500,000 and per-frequency divisors from rope_freqs that stretch the low frequencies for long context. The dot product of a rotated query and key then depends on how far apart the two tokens are."},
+{id:"kv_write",col:1,row:3,k:"hot",t:"KV cache write",fn:"SET_ROWS(cache_k_l0), SET_ROWS(cache_v_l0)",ops:["kv_write"],g:[["cache_k_l0 (view)","SET_ROWS"],["cache_v_l0 (view)","SET_ROWS"]],refs:["kv_write"],
+ n:"Store this step's K and V, as f16, in the layer's cache cells.",
+ d:"Each token writes 1,024 K and 1,024 V values into its cell. Later steps read them back instead of recomputing them. With -np 4 the server's cache has 4 streams, and the reshape that adds puts a node between RoPE and the write, which is why the RoPE + write fusion did not fire in this run."},
+{id:"attention",col:1,row:4,k:"hot",t:"Flash attention",fn:"FLASH_ATTN_EXT(Q, K cache, V cache, mask)",ops:["attention"],g:[["node_21","FLASH_ATTN_EXT"]],refs:["attention"],
+ n:"Each query head scores every cached position, softmaxes the scores and sums the V rows. One fused op.",
+ d:"The mask hides empty cells and later positions. The attended span is padded to 256 cells so every decode graph has the same shape. Online softmax keeps a running maximum and rescales as it goes, so the score matrix is never written to memory. At 41 to 105 tokens of context this is under 5% of the time.",
+ ph:{decode:"Decode: the vector kernel (one token on Ada). A 1×2×32 grid splits the 256 cells in two for each of the 32 heads, and combine_results merges the halves.",prefill:"Prompt pass: the tensor-core MMA kernel. The 4 query heads that share a key-value head share a tile: 96 blocks plus a stream-k fixup."}},
+{id:"o_proj",col:1,row:5,k:"hot",t:"Output projection + residual",fn:"MUL_MAT(wo), ADD",ops:["o_proj"],g:[["attn_out-0","MUL_MAT"],["ffn_inp-0","ADD"]],refs:["o_proj"],
+ n:"Mix the 32 heads back into 4,096 values and add them to the residual stream.",
+ d:"The 4,096 × 4,096 output matrix mixes what each head found. The sum with the layer's input is the residual stream the feed-forward half starts from.",
+ ph:{decode:"Decode: the add is fused into the matmul. mul_mat_vec_q writes result + residual in one kernel.",prefill:"Prompt pass: matmul fusion needs a single output row, so a separate k_bin_bcast kernel does the add."}},
+{id:"out_trim",col:1,row:6,k:"branch",t:"Keep rows that need logits",fn:"GET_ROWS(cur, inp_out_ids)",ops:["out_trim"],refs:["out_trim"],
+ n:"Layer 31 only: drop every row except the one whose logits are needed.",
+ d:"In the last layer, between attention and the residual add, ggml_get_rows keeps only the rows marked for output. The server asks for logits of the last prompt token only, so even the prompt pass runs its last feed-forward block and the output head on a single row."},
+
+/* ---------- feed-forward half ---------- */
+{id:"ffn_norm",col:2,row:0,k:"hot",t:"FFN norm",fn:"RMS_NORM, MUL(ffn_norm.weight)",ops:["ffn_norm"],g:[["norm-0","RMS_NORM",1],["ffn_norm-0","MUL"]],refs:["ffn_norm"],
+ n:"The same RMS norm as the attention half, with its own weight.",
+ d:"Fused into one rms_norm_f32 kernel, like the attention norm."},
+{id:"ffn_gate_up",col:2,row:1,k:"hot",t:"Gate, up and SwiGLU",fn:"MUL_MAT(gate), MUL_MAT(up), SWIGLU",ops:["ffn_gate_up"],g:[["ffn_gate-0","MUL_MAT"],["ffn_up-0","MUL_MAT"],["ffn_swiglu-0","SWIGLU"]],refs:["ffn_gate_up"],
+ n:"Two 4,096 × 14,336 matmuls on the same input, then SiLU(gate) × up. The largest step.",
+ d:"The gate and up matrices are 2,016 MiB together across the 32 layers, the biggest share of the weights, so this step takes about 40% of a decode step. SiLU(g) = g × sigmoid(g) decides how much of each of the 14,336 up values passes through.",
+ ph:{decode:"Decode: gate, up and the GLU fuse into one mul_mat_vec_q kernel that reads both matrices and applies SiLU as it writes.",prefill:"Prompt pass: two separate tensor-core matmuls, then unary_gated_op_kernel for SwiGLU."}},
+{id:"ffn_down",col:2,row:2,k:"hot",t:"Down projection + residual",fn:"MUL_MAT(down), ADD",ops:["ffn_down"],g:[["ffn_out-0","MUL_MAT"],["l_out-0","ADD"]],refs:["ffn_down"],
+ n:"Project 14,336 values back to 4,096 and add them to the residual stream. This is the layer's output.",
+ d:"ffn_down is Q6_K in 16 of the 32 layers and Q4_K in the rest. The result, l_out, is the next layer's input: the same 4,096-wide vector, now changed by one more layer.",
+ ph:{decode:"Decode: the residual add is fused into the matmul, as in the attention half.",prefill:"Prompt pass: tensor-core matmul, fixup, then a separate add."}},
+
+/* ---------- output ---------- */
+{id:"output_norm",col:3,row:0,k:"hot",t:"Final norm",fn:"RMS_NORM, MUL(output_norm.weight)",ops:["output_norm"],g:[["norm","RMS_NORM"],["result_norm","MUL"]],refs:["output_norm"],
+ n:"One more RMS norm on the output of layer 31.",
+ d:"After the last layer the residual stream is normalized once more before it is compared against every token in the vocabulary."},
+{id:"lm_head",col:3,row:1,k:"hot",t:"Output head",fn:"MUL_MAT(output.weight)",ops:["lm_head"],g:[["result_output","MUL_MAT"]],refs:["lm_head"],
+ n:"One 4,096 × 128,256 matmul: a score for every token in the vocabulary.",
+ d:"output.weight is Q6_K, 411 MiB: the largest single matrix and the longest kernel of the pass. It streams at about 945 GB/s, 94% of the 4090's rated 1,008 GB/s. Because the last layer kept only one row, it takes the same time in both phases."},
+{id:"logits",col:3,row:2,k:"hot",t:"Logits to host",fn:"ggml_backend_tensor_get_async(t_logits)",refs:["logits"],
+ n:"128,256 floats (501 KiB) are copied back to host memory, and the CPU waits for them.",
+ d:"This device-to-host copy ends the GPU's part of the pass. The trace splits passes at exactly this copy."},
+
+/* ---------- sampling ---------- */
+{id:"sample",col:4,row:0,k:"hot",t:"Sampler chain",fn:"common_sampler_sample",refs:["sample"],
+ n:"On the CPU: penalties, top-k, top-p, min-p and temperature on the logits, then a random draw.",
+ d:"The chain filters and reshapes the 128,256 scores and draws one token id from what is left. This is CPU work: it does not appear in the GPU trace."},
+{id:"detok",col:4,row:1,k:"hot",t:"Next token",fn:"common_sampler_accept, common_token_to_piece",refs:["detok"],
+ n:"The chosen id is recorded for the penalties, turned into text, and becomes the next step's input.",
+ d:"The text piece goes out to the client as a server-sent event. The id goes back to the start: the next decode step runs the whole model again for this one token."},
+];
+
+/* ex: one concrete fact or knob per node (hover tooltip and step card) */
+const EX = {
+  tok:"<code>POST /tokenize</code> shows the ids a prompt becomes. This prompt is 41 tokens after the chat template.",
+  embd:"token_embd is 128,256 rows × 4,096; one row per token is all a lookup reads, so the CPU is fast enough.",
+  upload:"<code>GGML_SCHED_DEBUG=2</code> prints the splits: split #0 on CPU (the lookup), split #1 on CUDA0 with 6 inputs.",
+  attn_norm:"ε = 1e-5. In ggml these are two nodes (RMS_NORM, MUL) but one CUDA kernel.",
+  qkv:"Q4_K stores 256 weights in 144 bytes (4.5 bits each). attn_v is Q6_K in half the layers.",
+  rope:"Positions come in as their own input tensor, one int32 per token.",
+  kv_write:"KV per token: 2 × 32 layers × 1,024 × 2 bytes = 128 KiB at f16.",
+  attention:"<code>-fa on|off|auto</code> controls flash attention. With it off, this is KQ matmul, softmax and KQV as separate ops.",
+  o_proj:"Grid 4,096 × 1 × 1 in decode: one block per output row.",
+  out_trim:"Without this trim the prompt pass would compute 41 × 128,256 logits and use only the last row.",
+  ffn_norm:"Same kernel and cost as the attention norm.",
+  ffn_gate_up:"14,336 = 3.5 × 4,096. Gate and up are read together, 63 MiB per layer.",
+  ffn_down:"In decode its matrix-vector kernel reaches about 890 GB/s.",
+  output_norm:"The output head and this norm run once per pass, not once per layer.",
+  lm_head:"Q6_K: 256 weights in 210 bytes (6.56 bits each).",
+  logits:"<code>\"n_probs\": 5</code> in a request returns the top 5 candidates read from this row.",
+  sample:"Server defaults: <code>top_k 40</code>, <code>top_p 0.95</code>, <code>min_p 0.05</code>, <code>temperature 0.8</code>.",
+  detok:"One decode step per token: 64 tokens in this reply means 64 trips around this loop.",
+};
+
+/* edges: [from, to, kind, label]. A label may be a function of the phase. */
+const nTok = ph => ph === "decode" ? 1 : 41;
+const HOTSEQ = ["tok","embd","upload","attn_norm","qkv","rope","kv_write","attention","o_proj","ffn_norm","ffn_gate_up","ffn_down","output_norm","lm_head","logits","sample","detok"];
+const HOTLABEL = {
+  "tok>embd": ph => nTok(ph) > 1 ? "41 ids" : "1 id",
+  "embd>upload": ph => `[4096 × ${nTok(ph)}]`,
+  "upload>attn_norm": "6 inputs",
+  "attn_norm>qkv": ph => `[4096 × ${nTok(ph)}]`,
+  "qkv>rope": "Q, K",
+  "rope>kv_write": "K, V",
+  "kv_write>attention": "256 cells",
+  "attention>o_proj": ph => `[4096 × ${nTok(ph)}]`,
+  "o_proj>ffn_norm": "+ residual",
+  "ffn_norm>ffn_gate_up": ph => `[4096 × ${nTok(ph)}]`,
+  "ffn_gate_up>ffn_down": ph => `[14336 × ${nTok(ph)}]`,
+  "ffn_down>output_norm": "after layer 31",
+  "output_norm>lm_head": "[4096 × 1]",
+  "lm_head>logits": "[128256]",
+  "logits>sample": "to the host",
+  "sample>detok": "token id",
+};
+const E = [];
+for (let i=0;i<HOTSEQ.length-1;i++) E.push([HOTSEQ[i],HOTSEQ[i+1],"hot",HOTLABEL[HOTSEQ[i]+">"+HOTSEQ[i+1]]||""]);
+E.push(["ffn_down","attn_norm","loop","next layer, 32 in all"],["detok","tok","loop","next decode step"]);
+E.push(["o_proj","out_trim","branch","layer 31"],["out_trim","ffn_norm","branch",""]);
+
+/* trace steps: id or [id, narration]; a narration may be a function of the phase */
+const TRACE = [
+  ...HOTSEQ.slice(0, 12),
+  ["attn_norm", "Layer 1 starts. Layers 1 to 31 repeat the same nine steps with their own weights: 32 layers make up nearly all of the pass."],
+  ["ffn_down", ph => `Layer 31 ends. In it, the row trim kept only the row that needs logits${ph === "prefill" ? ", so the prompt pass continues with 1 row instead of 41" : ""}.`],
+  ...HOTSEQ.slice(12),
+  ["tok", "The sampled token is the input of the next decode step. The reply is generated one step at a time, each a full pass over all the weights."],
+];
+/* DATA END */
+
+/* ---------------- measured helpers ---------------- */
+const M = MEASURED.models.q4_k_m;
+let phase = "decode";
+const fmtUs = us => us >= 1000 ? (us/1000).toFixed(2)+" ms" : (us >= 10 ? Math.round(us) : us.toFixed(1))+" µs";
+const fmtPct = s => s < 0.001 ? "<0.1%" : (s*100 >= 10 ? Math.round(s*100) : (s*100).toFixed(1))+"%";
+const int = x => Math.round(x).toLocaleString("en-US");
+function opTime(n, ph) {
+  if (!n.ops) return null;
+  const b = M[ph].byOp; let us=0, share=0, kernels=0, min=0, max=0, mb=0;
+  for (const o of n.ops) { const r=b[o]; us+=r.us; share+=r.share; kernels+=r.kernels; min+=r.us_min??r.us; max+=r.us_max??r.us; mb+=r.weight_mb||0; }
+  return {us, share, kernels, min, max, mb};
+}
+function nodeKernels(n, ph) {
+  if (!n.ops) return [];
+  const tailOps = ["out_trim","output_norm","lm_head"];
+  const src = n.ops.some(o => tailOps.includes(o)) ? M[ph].tail : M[ph].layer0;
+  return src.filter(k => n.ops.includes(k.op));
+}
+const shape = s => s ? "[" + s.filter((x,i)=>i<2||x>1).join(" × ") + "]" : "";
+const maxShare = ph => Math.max(...N.map(n => opTime(n, ph)?.share || 0));
+
+/* ---------------- layout ---------------- */
+const W=244, COLW=340, X0=40, PORTY=28;
+const rowY = r => 90 + r*112;
+const byId = {};
+N.forEach(n=>{ n.ex = EX[n.id]||""; n.x = X0 + n.col*COLW; n.y = rowY(n.row); byId[n.id]=n; n.ins=[]; n.outs=[]; n.ref0 = REFS[n.refs[0]][0]; });
+const edges = E.map(([a,b,k,label])=>{ const e={a,b,k,label:label||"",key:a+">"+b, ox:0,oy:0,vx:0,vy:0,tx:0,ty:0}; byId[a].outs.push(e); byId[b].ins.push(e); return e; });
+const edgeByKey = Object.fromEntries(edges.map(e=>[e.key,e]));
+const laneOf = n => LANES[n.col];
+const hotIndex = Object.fromEntries(HOTSEQ.map((id,i)=>[id,i+1]));
+const labelText = e => typeof e.label === "function" ? e.label(phase) : e.label;
+
+/* ---------------- DOM refs ---------------- */
+const $ = s => document.querySelector(s);
+const canvas=$("#canvas"), world=$("#world"), wires=$("#wires"), wiresG=$("#wiresG"), glows=$("#glows"), labelsG=$("#labels"), hitsG=$("#hits"), packet=$("#packet"), insp=$("#insp"), tip=$("#tip");
+const SVGNS="http://www.w3.org/2000/svg";
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const GH = `https://github.com/ggml-org/llama.cpp/blob/${SHA}/`;
+const refURL = r => GH + r.file + "#L" + r.line;
+const refLabel = r => r.file.replace(/^ggml\/src\//,"").replace(/^tools\/server\//,"server/") + ":" + r.line;
+const lcVar = n => `var(${laneOf(n).c})`;
+
+/* lane headers */
+LANES.forEach((L,i)=>{
+  const h=document.createElement("div"); h.className="lane-h";
+  h.style.left=(X0+i*COLW)+"px"; h.style.top="30px"; h.style.color=`var(${L.c})`;
+  h.innerHTML=`<span>${esc(L.name)}</span><small>${esc(L.sub)}</small>`; world.appendChild(h);
+});
+
+/* nodes */
+const KTAG={hot:"data path",branch:"last layer"};
+function msLine(n){
+  const t = opTime(n, phase);
+  if (!t) return `<div class="ms cpu">${n.col===0||n.col===4?"CPU, not in the GPU trace":"copy, no kernel"}</div>`;
+  const w = Math.max(2, t.share / maxShare(phase) * 100);
+  return `<div class="ms"><span>${fmtUs(t.us)}</span><span class="bar"><b style="width:${w}%"></b></span><span>${fmtPct(t.share)}</span></div>`;
+}
+N.forEach(n=>{
+  const el=document.createElement("div");
+  el.className=`node k-${n.k}`; el.dataset.id=n.id; el.tabIndex=0; el.setAttribute("role","button");
+  el.setAttribute("aria-label", `${n.t}: ${n.fn}`);
+  el.style.setProperty("--lc", lcVar(n));
+  world.appendChild(el); n.el=el; renderNode(n);
+});
+function renderNode(n){
+  const step = hotIndex[n.id] ? `<span class="step">${hotIndex[n.id]}</span>` : `<span class="tag">${KTAG[n.k]}</span>`;
+  n.el.innerHTML = `<span class="port in"></span><span class="port out"></span>
+    <div class="hd">${step}<span class="tt">${esc(n.t)}</span></div>
+    <div class="bd"><div class="fn">${esc(n.fn)}</div>${msLine(n)}<div class="loc">${esc(refLabel(n.ref0))}</div></div>`;
+  n.el.style.left=n.x+"px"; n.el.style.top=n.y+"px";
+}
+N.forEach(n=>{ n.h = n.el.offsetHeight || 80; });
+
+/* wires */
+edges.forEach(e=>{
+  const p=document.createElementNS(SVGNS,"path"); p.setAttribute("class",`wire k-${e.k}${e.k==="hot"?" flow":""}`); wiresG.appendChild(p); e.el=p;
+  if(e.k==="hot"){ const g=document.createElementNS(SVGNS,"path"); g.setAttribute("class","glow"); glows.appendChild(g); e.glow=g; }
+  const h=document.createElementNS(SVGNS,"path"); h.setAttribute("class","hit"); hitsG.appendChild(h); e.hit=h; h.__e=e;
+  if(e.label){ const t=document.createElementNS(SVGNS,"text"); t.setAttribute("class",`wlabel k-${e.k}`); t.setAttribute("text-anchor","middle"); t.textContent=labelText(e); labelsG.appendChild(t); e.lab=t; }
+});
+
+function geom(e){
+  const A=byId[e.a], B=byId[e.b];
+  const sx=A.x+W, sy=A.y+PORTY, tx=B.x, ty=B.y+PORTY;
+  let c1x,c1y,c2x,c2y;
+  if (tx > sx + 30) { const dx=Math.max(55,(tx-sx)*0.45); c1x=sx+dx;c1y=sy;c2x=tx-dx;c2y=ty; }
+  else if (A.col===B.col) { c1x=sx+85;c1y=sy;c2x=tx-85;c2y=ty; }
+  else { const d=Math.hypot(sx-tx,sy-ty); const drop=170+d*0.22; c1x=sx+260;c1y=Math.max(sy,ty)+drop;c2x=tx-260;c2y=Math.max(sy,ty)+drop; }
+  c1x+=e.ox;c1y+=e.oy;c2x+=e.ox;c2y+=e.oy;
+  return {sx,sy,c1x,c1y,c2x,c2y,tx,ty};
+}
+function drawEdge(e){
+  const g=geom(e), d=`M${g.sx},${g.sy} C${g.c1x},${g.c1y} ${g.c2x},${g.c2y} ${g.tx},${g.ty}`;
+  e.el.setAttribute("d",d); e.hit.setAttribute("d",d); if(e.glow) e.glow.setAttribute("d",d);
+  if(e.lab){ const t=.5,m=1-t; const x=m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx, y=m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty; e.lab.setAttribute("x",x); e.lab.setAttribute("y",y-6); }
+  e.mid = bez(g,.5);
+}
+const bez=(g,t)=>{const m=1-t;return{x:m*m*m*g.sx+3*m*m*t*g.c1x+3*m*t*t*g.c2x+t*t*t*g.tx,y:m*m*m*g.sy+3*m*m*t*g.c1y+3*m*t*t*g.c2y+t*t*t*g.ty}};
+edges.forEach(drawEdge);
+
+/* ---------------- spring physics on hovered cables ---------------- */
+let springing=false;
+function kick(){ if(!springing){ springing=true; requestAnimationFrame(stepSprings); } }
+function stepSprings(){
+  let active=false;
+  for(const e of edges){
+    const fx=(e.tx-e.ox)*0.14, fy=(e.ty-e.oy)*0.14;
+    e.vx=(e.vx+fx)*0.74; e.vy=(e.vy+fy)*0.74; e.ox+=e.vx; e.oy+=e.vy;
+    if(Math.abs(e.vx)+Math.abs(e.vy)+Math.abs(e.tx-e.ox)+Math.abs(e.ty-e.oy)>0.05){ active=true; drawEdge(e); }
+    else if(e.ox!==e.tx||e.oy!==e.ty){ e.ox=e.tx;e.oy=e.ty;e.vx=e.vy=0;drawEdge(e); }
+  }
+  if(active) requestAnimationFrame(stepSprings); else springing=false;
+}
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------------- camera ---------------- */
+const cam={x:0,y:0,k:1};
+function applyCam(){
+  world.style.transform=`translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
+  const gs=22*cam.k; canvas.style.backgroundSize=`${gs}px ${gs}px`; canvas.style.backgroundPosition=`${cam.x}px ${cam.y}px`;
+  $("#pct").textContent=Math.round(cam.k*100)+"%";
+  labelsG.style.display = cam.k<0.45 ? "none":"";
+  drawMini(); placeCard();
+}
+const clampK=k=>Math.min(2.2,Math.max(0.18,k));
+function zoomAt(px,py,k){ k=clampK(k); const wx=(px-cam.x)/cam.k, wy=(py-cam.y)/cam.k; cam.k=k; cam.x=px-wx*k; cam.y=py-wy*k; applyCam(); }
+let flyRaf=0;
+function flyTo(tx,ty,tk,ms=520){
+  cancelAnimationFrame(flyRaf);
+  if(reduced){ Object.assign(cam,{x:tx,y:ty,k:tk}); applyCam(); return; }
+  const s={...cam}, t0=performance.now();
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+    cam.x=s.x+(tx-s.x)*q; cam.y=s.y+(ty-s.y)*q; cam.k=s.k+(tk-s.k)*q; applyCam(); if(p<1) flyRaf=requestAnimationFrame(f); };
+  flyRaf=requestAnimationFrame(f);
+}
+function viewRect(){ const r=canvas.getBoundingClientRect(); return {w:r.width,h:r.height,l:r.left,t:r.top}; }
+function fitBox(x0,y0,x1,y1,pad=60,maxK=1.1){
+  const v=viewRect(); const bw=x1-x0, bh=y1-y0;
+  const k=clampK(Math.min((v.w-pad*2)/bw,(v.h-pad*2-70)/bh,maxK));
+  flyTo((v.w-bw*k)/2-x0*k, (v.h-70-bh*k)/2-y0*k+10, k);
+}
+function visibleNodes(){ return N.filter(n=>!n.el.hidden); }
+function fitNodes(list,maxK){ if(!list.length) return; let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; list.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);}); fitBox(x0,y0-50,x1,y1,50,maxK); }
+function centerOn(n,k){ const v=viewRect(); k=k??Math.max(cam.k,0.85); flyTo(v.w/2-(n.x+W/2)*k, v.h/2-(n.y+n.h/2)*k-30, k); }
+
+/* ---------------- interaction: pan / zoom / drag ---------------- */
+let drag=null; const pointers=new Map(); let pinch=null;
+canvas.addEventListener("pointerdown",ev=>{
+  if(ev.target.closest(".transport,.legend,.mini")) return;
+  pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pointers.size===2){ const [a,b]=[...pointers.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),k:cam.k}; drag=null; return; }
+  const nodeEl=ev.target.closest(".node");
+  if(nodeEl){ const n=byId[nodeEl.dataset.id]; drag={type:"node",n,sx:ev.clientX,sy:ev.clientY,nx:n.x,ny:n.y,moved:false}; }
+  else drag={type:"pan",sx:ev.clientX,sy:ev.clientY,cx:cam.x,cy:cam.y,moved:false,edge:ev.target.__e||null};
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener("pointermove",ev=>{
+  if(pointers.has(ev.pointerId)) pointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+  if(pinch && pointers.size===2){ const [a,b]=[...pointers.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); const v=viewRect(); zoomAt((a.x+b.x)/2-v.l,(a.y+b.y)/2-v.t,pinch.k*d/pinch.d); return; }
+  if(!drag) return;
+  const dx=ev.clientX-drag.sx, dy=ev.clientY-drag.sy;
+  if(!drag.moved && Math.hypot(dx,dy)>4){ drag.moved=true; if(drag.type==="pan") canvas.classList.add("panning"); else { drag.n.el.classList.add("dragging"); hideTip(); } }
+  if(!drag.moved) return;
+  if(drag.type==="pan"){ cam.x=drag.cx+dx; cam.y=drag.cy+dy; applyCam(); }
+  else { const n=drag.n; n.x=drag.nx+dx/cam.k; n.y=drag.ny+dy/cam.k; n.el.style.left=n.x+"px"; n.el.style.top=n.y+"px"; [...n.ins,...n.outs].forEach(drawEdge); drawMini(); placeCard(); }
+});
+function endPtr(ev){
+  pointers.delete(ev.pointerId); if(pointers.size<2) pinch=null;
+  if(!drag) return;
+  if(!drag.moved && drag.type==="node") select(drag.n.id,false);
+  else if(!drag.moved && drag.type==="pan" && ev.type==="pointerup") { if(drag.edge) select(drag.edge.b,true); else if(sel) select(null); }
+  if(drag.type==="node") drag.n.el.classList.remove("dragging");
+  canvas.classList.remove("panning"); drag=null;
+}
+canvas.addEventListener("pointerup",endPtr); canvas.addEventListener("pointercancel",endPtr);
+canvas.addEventListener("wheel",ev=>{
+  ev.preventDefault(); const v=viewRect();
+  const wheelLike = ev.deltaMode!==0 || (ev.deltaX===0 && Math.abs(ev.deltaY)>=50);
+  if((ev.ctrlKey||ev.metaKey||wheelLike) && !ev.shiftKey){
+    zoomAt(ev.clientX-v.l, ev.clientY-v.t, cam.k*Math.exp(-ev.deltaY*(ev.ctrlKey?0.012:0.0018)));
+  } else { cam.x-=ev.deltaX; cam.y-=ev.deltaY; applyCam(); }
+},{passive:false});
+$("#btnIn").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k*1.2)};
+$("#btnOut").onclick=()=>{const v=viewRect();zoomAt(v.w/2,v.h/2,cam.k/1.2)};
+$("#btnFit").onclick=()=>fitNodes(visibleNodes(),1);
+$("#btnHot").onclick=()=>fitNodes(N.filter(n=>n.col===1||n.col===2),1);
+
+/* ---------------- hover highlighting + tooltip ---------------- */
+let hoverNode=null;
+function setLit(nodes,edgesLit){
+  N.forEach(n=>n.el.classList.toggle("lit",nodes.has(n.id)));
+  edges.forEach(e=>{ const on=edgesLit.has(e); e.el.classList.toggle("lit",on); e.lab&&e.lab.classList.toggle("lit",on); });
+  const any=nodes.size>0;
+  canvas.classList.toggle("dim-nodes",any); wires.classList.toggle("dim-wires",any);
+}
+function clearLit(){ N.forEach(n=>n.el.classList.remove("lit")); edges.forEach(e=>{e.el.classList.remove("lit");e.lab&&e.lab.classList.remove("lit")}); canvas.classList.remove("dim-nodes"); wires.classList.remove("dim-wires"); }
+function litNode(n){ const ns=new Set([n.id]), es=new Set(); [...n.ins,...n.outs].forEach(e=>{ es.add(e); ns.add(e.a); ns.add(e.b); }); setLit(ns,es); }
+function showTip(html,x,y){ tip.innerHTML=html; tip.hidden=false; const r=tip.getBoundingClientRect(); let L=x+16,T=y+16; if(L+r.width>innerWidth-8) L=x-r.width-12; if(T+r.height>innerHeight-8) T=y-r.height-12; tip.style.left=L+"px"; tip.style.top=T+"px"; }
+function hideTip(){ tip.hidden=true; }
+world.addEventListener("pointerover",ev=>{
+  const el=ev.target.closest(".node"); if(!el||drag?.moved) return;
+  const n=byId[el.dataset.id]; hoverNode=n; litNode(n);
+  [...n.ins,...n.outs].forEach(e=>{ e.ty = e.b===n.id ? -6 : 6; }); if(!reduced) kick();
+});
+world.addEventListener("pointermove",ev=>{ const el=ev.target.closest(".node"); if(el && !drag?.moved && ev.pointerType==="mouse"){ const n=byId[el.dataset.id]; showTip(`<b>${esc(n.t)}</b>${esc(n.n)}${n.ex?`<span class="ex"><i>E.G.</i>${n.ex}</span>`:""}<span class="hint">${esc(refLabel(n.ref0))} · ${hotIndex[n.id]?`step ${hotIndex[n.id]} · `:""}click for details</span>`,ev.clientX,ev.clientY); } });
+world.addEventListener("pointerout",ev=>{
+  const el=ev.target.closest(".node"); if(!el) return; if(ev.relatedTarget && el.contains(ev.relatedTarget)) return;
+  const n=byId[el.dataset.id]; [...n.ins,...n.outs].forEach(e=>{e.tx=0;e.ty=0;}); kick();
+  hoverNode=null; hideTip(); restoreLit();
+});
+hitsG.addEventListener("pointerover",ev=>{ const e=ev.target.__e; if(!e) return; setLit(new Set([e.a,e.b]),new Set([e])); });
+hitsG.addEventListener("pointermove",ev=>{
+  const e=ev.target.__e; if(!e||drag) return; const v=viewRect();
+  const wx=(ev.clientX-v.l-cam.x)/cam.k, wy=(ev.clientY-v.t-cam.y)/cam.k;
+  const dx=wx-e.mid.x, dy=wy-e.mid.y, L=Math.hypot(dx,dy)||1, m=Math.min(46,L*0.5);
+  e.tx=dx/L*m; e.ty=dy/L*m; if(!reduced) kick();
+  const A=byId[e.a],B=byId[e.b];
+  if(ev.pointerType==="mouse") showTip(`<b>${esc(A.t)} → ${esc(B.t)}</b>${e.label?esc(labelText(e))+"<br>":""}<code>${esc({hot:"data path",loop:"repeats",branch:"last layer only"}[e.k])}</code>`,ev.clientX,ev.clientY);
+});
+hitsG.addEventListener("pointerout",ev=>{ const e=ev.target.__e; if(!e) return; e.tx=0;e.ty=0;kick(); hideTip(); restoreLit(); });
+function restoreLit(){ if(sel) litNode(byId[sel]); else clearLit(); }
+
+/* ---------------- phase switch ---------------- */
+const phaseBtns=[...document.querySelectorAll("#phase button")];
+function setPhase(ph){
+  phase=ph;
+  phaseBtns.forEach(b=>b.setAttribute("aria-pressed", b.dataset.phase===ph));
+  N.forEach(renderNode); if(sel) byId[sel].el.classList.add("sel");
+  if(ti>=0){ for(let j=0;j<=ti;j++) byId[stepInfo(j).id].el.classList.add("visited"); byId[stepInfo(ti).id].el.classList.add("cur"); }
+  edges.forEach(e=>{ if(e.lab) e.lab.textContent=labelText(e); });
+  if(sel) renderInspector(byId[sel], ti>=0 && stepInfo(ti).id===sel ? narration(ti) : null); else renderEmpty();
+  renderCard(); restoreLit(); stepLabel();
+}
+phaseBtns.forEach(b=>b.onclick=()=>setPhase(b.dataset.phase));
+
+/* ---------------- search ---------------- */
+const q=$("#q"), qcount=$("#qcount");
+let hits=[];
+function searchText(n){ return [n.t,n.fn,n.n,n.d,...n.refs.flatMap(k=>REFS[k].map(r=>r.file+" "+r.what)),...PHASES.flatMap(ph=>nodeKernels(n,ph).map(k=>k.kernel))].join(" ").toLowerCase(); }
+q.addEventListener("input",()=>{
+  const s=q.value.trim().toLowerCase();
+  N.forEach(n=>n.el.classList.remove("hit"));
+  if(!s){ canvas.classList.remove("searching"); qcount.textContent=""; hits=[]; return; }
+  hits=N.filter(n=>searchText(n).includes(s));
+  hits.forEach(n=>n.el.classList.add("hit")); canvas.classList.add("searching");
+  qcount.textContent=hits.length?`${hits.length}`:"none";
+});
+let hitCursor=0;
+q.addEventListener("keydown",ev=>{
+  if(ev.key==="Enter"&&hits.length){ select(hits[hitCursor++%hits.length].id,true); }
+  if(ev.key==="Escape"){ q.value=""; q.dispatchEvent(new Event("input")); q.blur(); }
+});
+
+/* ---------------- inspector ---------------- */
+let sel=null;
+function select(id,fly){
+  if(sel) byId[sel].el.classList.remove("sel");
+  if(ti>=0 && (!id || stepInfo(ti).id!==id)){ setPlaying(false); resetTrace(); }
+  sel=id;
+  if(!id){ clearLit(); renderEmpty(); card.hidden=true; return; }
+  const n=byId[id]; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n);
+  cardOff=false; renderCard();
+  if(fly) centerOn(n);
+  if(innerWidth>860 || !hotIndex[id]) insp.classList.remove("closed");
+}
+function jumpBtn(id,via){
+  const n=byId[id]; const hot=n.k==="hot";
+  return `<button class="jump${hot?" hot":""}" data-jump="${id}" style="--lc:${lcVar(n)}"><i></i>${esc(n.t)}${via?` <em>${esc(via)}</em>`:""}</button>`;
+}
+const PHNAME = {decode:"decode step", prefill:"prompt pass"};
+function measuredHTML(n){
+  const t=opTime(n,phase);
+  if(!t){
+    if(n.id==="sample"||n.id==="detok"){
+      const s=M.server;
+      return `<div class="sec"><h3>Measured</h3><p>Not in the GPU trace. In the profiled run the server reported ${s.predicted_per_token_ms.toFixed(2)} ms per generated token, while a median decode step kept the GPU busy for ${fmtUs(M.decode.busyMedianUs)}. Sampling, this step's copies and the graph launch fit in the difference.</p></div>`;
+    }
+    return "";
+  }
+  const scope = n.k==="branch" || n.col===3 ? "once per pass" : "layer 0 (each of the 32 layers runs the same kernels)";
+  const ks=nodeKernels(n,phase);
+  const rows=ks.map(k=>{
+    const helper=/quant_act|fixup|convert/.test(k.role);
+    return `<tr${helper?' class="help"':""}><td>${esc(k.kernel)}</td><td class="g">${esc(k.grid)}</td><td class="n">${k.us.toFixed(2)}</td></tr>`;
+  }).join("");
+  const sum=ks.reduce((a,k)=>a+k.us,0);
+  const lines=[
+    [`Total in the ${PHNAME[phase]}`, fmtUs(t.us)],
+    [`Share of GPU time`, fmtPct(t.share)],
+    [`CUDA kernels`, int(t.kernels)],
+  ];
+  if(phase==="decode" && t.max>t.us*1.05) lines.push([`Range over ${M.decode.steps} steps`, `${fmtUs(t.min)} to ${fmtUs(t.max)}`]);
+  if(t.mb) lines.push([`Weights read`, `${int(t.mb)} MiB, ${int(t.mb*1048576/(t.us*1000))} GB/s`]);
+  return `<div class="sec"><h3>Measured, ${esc(PHNAME[phase])}</h3>
+    <div class="meas">${lines.map(([a,b])=>`<span>${esc(a)}</span><b>${esc(b)}</b>`).join("")}</div></div>
+    <div class="sec"><h3>CUDA kernels, ${esc(scope)}</h3>
+    <table class="ktab"><thead><tr><th>Kernel</th><th>Grid</th><th style="text-align:right">µs</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="2">${ks.length} kernel${ks.length===1?"":"s"}${n.k==="branch"||n.col===3?"":", layer 0"}</td><td class="n">${sum.toFixed(2)}</td></tr></tfoot></table>
+    <p style="font-size:12px;color:var(--fg-3)">Grey rows are helpers: activation quantization and stream-k fixups.</p></div>`;
+}
+function tensorsHTML(n){
+  if(!n.g) return "";
+  const rows=n.g.map(g=>{ const x=graphPick(M,phase,g); return `<tr><td>${esc(x.name)}</td><td>${esc(x.op)}</td><td>${esc(shape(x.s0))}${x.s1?" , "+esc(shape(x.s1)):""}</td><td>${esc(shape(x.out))}</td></tr>`; }).join("");
+  return `<div class="sec"><h3>ggml nodes, layer 0</h3><table class="ktab"><thead><tr><th>Node</th><th>Op</th><th>Inputs</th><th>Output</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function renderInspector(n, narr){
+  const L=laneOf(n);
+  const hi=hotIndex[n.id];
+  const prev=hi>1?HOTSEQ[hi-2]:null, next=hi&&hi<HOTSEQ.length?HOTSEQ[hi]:null;
+  const via=e=>e.k==="loop"?"loop":e.k==="branch"?"last layer":"";
+  const ins=n.ins.map(e=>jumpBtn(e.a, via(e))).join("");
+  const outs=n.outs.map(e=>jumpBtn(e.b, via(e))).join("");
+  const refs=n.refs.flatMap(k=>REFS[k]);
+  insp.style.setProperty("--lc",lcVar(n));
+  insp.innerHTML=`
+    <button class="ibtn closeinsp" data-close aria-label="Close inspector">✕</button>
+    ${narr?`<div class="narr"><span class="k">${esc(narr.k)}</span><p>${esc(narr.text)}</p></div>`:""}
+    <div>
+      <div class="eyebrow"><i></i>${esc(L.name)} · ${hi?`step ${hi} of ${HOTSEQ.length}`:esc(KTAG[n.k])}</div>
+      <h2 style="margin-top:6px">${esc(n.t)}</h2>
+      <div class="fnline">${esc(n.fn)}</div>
+      <a class="src" href="${refURL(n.ref0)}" target="_blank" rel="noopener">${esc(refLabel(n.ref0))} ↗</a>
+    </div>
+    ${hi?`<div class="navrow"><button class="ibtn" data-step="${hi-2}" ${prev?"":"disabled"}>◀ Prev</button><button class="ibtn primary" data-step="${hi}" ${next?"":"disabled"}>Next: ${next?esc(byId[next].t):"end"} ▶</button></div>`:""}
+    <p>${esc(n.d)}</p>
+    ${n.ph?`<p class="phnote">${esc(n.ph[phase])}</p>`:""}
+    ${measuredHTML(n)}
+    ${tensorsHTML(n)}
+    ${n.ex?`<div class="sec"><h3>Example / tip</h3><p style="font-size:13px">${n.ex}</p></div>`:""}
+    <div class="sec"><h3>In the source</h3><ul class="refs">${refs.map(r=>`<li><span>${esc(r.what)}</span><a href="${refURL(r)}" target="_blank" rel="noopener">${esc(r.file)}:${r.line}</a></li>`).join("")}</ul></div>
+    ${ins?`<div class="sec"><h3>Comes from</h3><div class="jumps">${ins}</div></div>`:""}
+    ${outs?`<div class="sec"><h3>Goes to</h3><div class="jumps">${outs}</div></div>`:""}
+  `;
+}
+function renderEmpty(){
+  insp.style.removeProperty("--lc");
+  const d=M.decode, p=M.prefill;
+  insp.innerHTML=`<div class="empty">
+    <div class="eyebrow">Llama 3.1 8B Q4_K_M · ${N.length} nodes · ${M.nodes} ggml ops per pass</div>
+    <h2>Follow one token through the model</h2>
+    <p>The <a href="llama-cpp.html">request tracer</a> follows a chat request through llama-server. This one zooms into its graph-compute step and follows the data: a token id becomes a 4,096-wide vector, goes through 32 identical layers on the GPU, and comes out as 128,256 scores, one per token in the vocabulary.</p>
+    <p>Every box is a group of ggml ops. Its time is measured: a decode step kept the GPU busy for ${fmtUs(d.busyMedianUs)} (median of ${d.steps}) in ${int(d.kernels)} kernels; the 41-token prompt pass took ${fmtUs(p.busyUs)} in ${int(p.kernels)}. Switch between them at the top.</p>
+    <ol>
+      <li>Press <b>▶ Trace</b> below, or step with <span class="kbd">←</span> <span class="kbd">→</span>.</li>
+      <li>Click any box for its CUDA kernels, tensor shapes and the exact source lines.</li>
+      <li>Drag the background to pan, scroll or pinch to zoom, drag boxes to untangle.</li>
+    </ol>
+    <div class="sec"><h3>Start here</h3><div class="jumps">${["embd","attention","ffn_gate_up","lm_head","sample"].map(id=>jumpBtn(id)).join("")}</div></div>
+    <p style="font-size:12px;color:var(--fg-3)">Measured on one RTX 4090 with Nsight Systems, capture ${esc(MEASURED.capture)}. Source lines pinned to commit 2ca15f5 (Oct 4 2026). The write-up with charts is <a href="llama-cpp-forward.html">One forward pass</a>.</p>
+  </div>`;
+}
+insp.addEventListener("click",ev=>{
+  const st=ev.target.closest("[data-step]"); if(st&&!st.disabled){ setPlaying(false); gotoStep(+st.dataset.step); return; }
+  const j=ev.target.closest("[data-jump]"); if(j&&j.dataset.jump){ select(j.dataset.jump,true); return; }
+  if(ev.target.closest("[data-close]")){ insp.classList.add("closed"); }
+});
+
+/* ---------------- trace ---------------- */
+let ti=-1, playing=false, playTimer=0;
+const tProg=$("#tProg"), tStep=$("#tStep"), tName=$("#tName"), tPlay=$("#tPlay");
+function stepInfo(i){ const s=TRACE[i]; if(!Array.isArray(s)) return {id:s,say:null}; return {id:s[0],say:typeof s[1]==="function"?s[1](phase):s[1]}; }
+const loopPhaseAt = i => i>=12 && i<14 ? "LAYERS 1 TO 31" : i===TRACE.length-1 ? "NEXT TOKEN" : (i<12?"LAYER 0":"OUTPUT");
+function narration(i){ const {id,say}=stepInfo(i); return {k:`TRACE · STEP ${i+1} · ${loopPhaseAt(i)}`, text: say || byId[id].n}; }
+function clearTrace(){ N.forEach(n=>n.el.classList.remove("cur","visited")); edges.forEach(e=>e.el.classList.remove("trav")); packet.setAttribute("cx",-99999); packet.setAttribute("cy",-99999); }
+function resetTrace(){ ti=-1; clearTrace(); tStep.textContent="TRACE A FORWARD PASS"; tName.textContent="Press ▶ to follow one token through the model"; tProg.style.width="0"; tPlay.textContent="▶ Trace"; }
+function stepLabel(){ if(ti>=0) tStep.textContent = `STEP ${ti+1}/${TRACE.length} · ${loopPhaseAt(ti)} · ${PHNAME[phase].toUpperCase()}`; }
+function gotoStep(i){
+  i=Math.max(0,Math.min(TRACE.length-1,i)); const prevI=ti; ti=i;
+  clearTrace();
+  for(let j=0;j<=i;j++){ const {id}=stepInfo(j); byId[id].el.classList.add("visited"); if(j>0){ const e=edgeByKey[stepInfo(j-1).id+">"+id]; if(e) e.el.classList.add("trav"); } }
+  const {id}=stepInfo(i), n=byId[id]; n.el.classList.add("cur");
+  stepLabel();
+  tName.textContent = n.t+": "+n.fn;
+  tProg.style.width=((i+1)/TRACE.length*100)+"%";
+  if(sel) byId[sel].el.classList.remove("sel"); sel=id; n.el.classList.add("sel"); litNode(n);
+  renderInspector(n, narration(i));
+  if(innerWidth>860) insp.classList.remove("closed");
+  cardOff=false; renderCard();
+  if($("#tFollow").checked) centerOn(n, Math.max(cam.k, 0.8));
+  if(prevI>=0 && Math.abs(i-prevI)===1){
+    const a=stepInfo(Math.min(i,prevI)).id, b=stepInfo(Math.max(i,prevI)).id, e=edgeByKey[a+">"+b];
+    if(e && !reduced) animatePacket(e, i<prevI);
+  }
+}
+let pktRaf=0;
+function animatePacket(e,rev){
+  cancelAnimationFrame(pktRaf); const L=e.el.getTotalLength(), t0=performance.now(), ms=Math.min(900,280+L*0.35);
+  const f=now=>{ const p=Math.min(1,(now-t0)/ms), q=rev?1-p:p, pt=e.el.getPointAtLength(L*q); packet.setAttribute("cx",pt.x); packet.setAttribute("cy",pt.y); if(p<1) pktRaf=requestAnimationFrame(f); else { packet.setAttribute("cx",-99999); packet.setAttribute("cy",-99999);} };
+  pktRaf=requestAnimationFrame(f);
+}
+function setPlaying(p){ playing=p; tPlay.textContent=p?"❚❚ Pause":(ti>=0?"▶ Play":"▶ Trace"); clearTimeout(playTimer); if(p) playTimer=setTimeout(tick,2300); }
+function tick(){ if(!playing) return; if(ti>=TRACE.length-1){ setPlaying(false); return; } gotoStep(ti+1); if(ti>=TRACE.length-1){ setPlaying(false); return; } playTimer=setTimeout(tick, 2300); }
+tPlay.onclick=()=>{ if(playing){ setPlaying(false); return; } gotoStep(ti<0||ti>=TRACE.length-1 ? 0 : ti+1); setPlaying(true); };
+$("#tNext").onclick=()=>{ setPlaying(false); gotoStep(ti+1); };
+$("#tPrev").onclick=()=>{ setPlaying(false); gotoStep(ti<0?0:ti-1); };
+$("#tFirst").onclick=()=>{ setPlaying(false); gotoStep(0); };
+document.addEventListener("keydown",ev=>{
+  if(ev.target.matches("input,textarea")) { return; }
+  if(ev.key==="ArrowRight"){ ev.preventDefault(); setPlaying(false); gotoStep(ti+1); }
+  else if(ev.key==="ArrowLeft"){ ev.preventDefault(); setPlaying(false); gotoStep(ti<0?0:ti-1); }
+  else if(ev.key===" " && !ev.target.closest("button")){ ev.preventDefault(); tPlay.click(); }
+  else if(ev.key==="f"||ev.key==="F"){ fitNodes(visibleNodes(),1); }
+  else if(ev.key==="/"){ ev.preventDefault(); q.focus(); }
+  else if(ev.key==="Escape"){ setPlaying(false); card.hidden=true; select(null); resetTrace(); }
+  else if(ev.key==="Enter" && ev.target.classList.contains("node")){ select(ev.target.dataset.id,true); }
+});
+
+/* ---------------- step card (popup next to the node) ---------------- */
+const card=$("#card"); let cardOff=false;
+function cardModel(){
+  if(cardOff||!sel) return null;
+  const n=byId[sel];
+  if(ti>=0 && stepInfo(ti).id===sel){
+    const nar=narration(ti);
+    return {n, label:`STEP ${ti+1} / ${TRACE.length} · ${loopPhaseAt(ti)}`, text:nar.text,
+      prev: ti>0 ? ()=>gotoStep(ti-1) : null, next: ti<TRACE.length-1 ? ()=>gotoStep(ti+1) : null,
+      nextLabel: ti<TRACE.length-1 ? byId[stepInfo(ti+1).id].t : null};
+  }
+  const hi=hotIndex[sel]; if(!hi) return null;
+  return {n, label:`STEP ${hi} / ${HOTSEQ.length}`, text:n.n,
+    prev: hi>1 ? ()=>gotoStep(hi-2) : null, next: ()=>gotoStep(Math.min(hi, TRACE.length-1)),
+    nextLabel: byId[stepInfo(Math.min(hi, TRACE.length-1)).id].t};
+}
+let cardNav={};
+function renderCard(){
+  const m=cardModel(); if(!m){ card.hidden=true; return; }
+  cardNav=m;
+  const t=opTime(m.n,phase);
+  card.innerHTML=`<div class="top"><small>${esc(m.label)}</small><button class="x" data-card="close" aria-label="Hide step popup" title="Hide (shows again on next step)">✕</button></div>
+    <div><h4>${esc(m.n.t)}</h4><div class="fnc">${esc(m.n.fn)}${t?` · ${esc(fmtUs(t.us))} in the ${esc(PHNAME[phase])}`:""}</div></div>
+    <p>${esc(m.text)}</p>
+    ${m.n.ex?`<div class="ex"><b>E.G.</b>${m.n.ex}</div>`:""}
+    <div class="row"><button class="ibtn" data-card="prev" ${m.prev?"":"disabled"} aria-label="Previous step">◀</button>
+      <button class="ibtn primary grow" data-card="next" ${m.next?"":"disabled"}>${m.next?`Next: ${esc(m.nextLabel)} ▶`:"End of trace"}</button></div>
+    <button class="more" data-card="more">Kernels, tensor shapes and source links →</button>`;
+  card.hidden=false; placeCard();
+}
+function placeCard(){
+  if(card.hidden||!sel) return;
+  const n=byId[sel], v=viewRect(), cw=card.offsetWidth, ch=card.offsetHeight;
+  card.classList.remove("right","below","docked");
+  if(innerWidth<=860){ card.classList.add("docked"); return; }
+  const nx=cam.x+n.x*cam.k, ny=cam.y+n.y*cam.k, nw=W*cam.k, nh=n.h*cam.k;
+  let x=nx+nw+14, y=ny-4;
+  if(x+cw>v.w-12){ x=nx-cw-14; card.classList.add("right"); }
+  if(x<12){ x=Math.min(Math.max(12,nx),v.w-cw-12); y=ny+nh+12; card.classList.add("below"); card.classList.remove("right"); }
+  y=Math.max(12,Math.min(y,v.h-ch-86));
+  card.style.left=x+"px"; card.style.top=y+"px";
+}
+card.addEventListener("pointerdown",ev=>ev.stopPropagation());
+card.addEventListener("wheel",ev=>ev.stopPropagation());
+card.addEventListener("click",ev=>{
+  const b=ev.target.closest("[data-card]"); if(!b||b.disabled) return;
+  const a=b.dataset.card;
+  if(a==="close"){ cardOff=true; card.hidden=true; }
+  else if(a==="prev"&&cardNav.prev){ setPlaying(false); cardNav.prev(); }
+  else if(a==="next"&&cardNav.next){ setPlaying(false); cardNav.next(); }
+  else if(a==="more"){ insp.classList.remove("closed"); insp.scrollTop=0; insp.animate?.([{boxShadow:"inset 0 0 0 2px var(--hot)"},{boxShadow:"inset 0 0 0 0 transparent"}],{duration:900}); }
+});
+
+/* ---------------- minimap ---------------- */
+const mini=$("#mini"); let mb=null; const laneColor={}; LANES.forEach(L=>laneColor[L.c]=getComputedStyle(document.documentElement).getPropertyValue(L.c).trim());
+function drawMini(){
+  if(!mini.getBoundingClientRect().width) return;
+  const vis=visibleNodes(); if(!vis.length){ mini.innerHTML=""; return; }
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; N.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h);});
+  const pad=8, s=Math.min((190-pad*2)/(x1-x0),(104-pad*2)/(y1-y0)); mb={x0,y0,s,pad};
+  const v=viewRect();
+  const vx=(-cam.x/cam.k-x0)*s+pad, vy=(-cam.y/cam.k-y0)*s+pad, vw=v.w/cam.k*s, vh=v.h/cam.k*s;
+  mini.innerHTML = vis.map(n=>`<rect x="${(n.x-x0)*s+pad}" y="${(n.y-y0)*s+pad}" width="${W*s}" height="${Math.max(2,n.h*s)}" rx="1" fill="${n.k==="hot"?"#ffb547":laneColor[laneOf(n).c]}" opacity="${n.k==="hot"?.85:.45}"/>`).join("")
+    + `<rect class="v" x="${vx}" y="${vy}" width="${vw}" height="${vh}" rx="2"/>`;
+}
+mini.addEventListener("pointerdown",ev=>{
+  ev.stopPropagation(); if(!mb) return; const r=mini.getBoundingClientRect(), v=viewRect();
+  const wx=(ev.clientX-r.left-mb.pad)/mb.s+mb.x0, wy=(ev.clientY-r.top-mb.pad)/mb.s+mb.y0;
+  flyTo(v.w/2-wx*cam.k, v.h/2-wy*cam.k, cam.k, 300);
+});
+
+/* ---------------- boot ---------------- */
+function sizeWires(){ let x1=0,y1=0; N.forEach(n=>{x1=Math.max(x1,n.x+W);y1=Math.max(y1,n.y+n.h)}); wires.setAttribute("width",x1+400); wires.setAttribute("height",y1+800); }
+sizeWires(); renderEmpty();
+requestAnimationFrame(()=>{ fitNodes(N,0.95); });
+addEventListener("resize",()=>drawMini());
+if(innerWidth<=860) insp.classList.add("closed");
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
-// Verifies every source reference in llama-cpp-forward.html against llama.cpp at the pinned commit,
-// with the same rule as tools/check-sources.mjs: the `check` text must appear within 3 lines of `line`.
+// Verifies every source reference in llama-cpp-forward.html and llama-cpp-inference.html against
+// llama.cpp at the pinned commit, with the same rule as tools/check-sources.mjs: the `check` text
+// must appear within 3 lines of `line`.
 //
 //   node inference/capture/check-page-refs.mjs
 //
@@ -12,20 +13,27 @@ import { fileURLToPath } from 'node:url';
 import { checkRef } from '../../tools/check-sources.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const html = fs.readFileSync(path.join(root, 'llama-cpp-forward.html'), 'utf8');
-const commit = /"commit":"([0-9a-f]{40})"/.exec(html)?.[1];
-if (!commit) throw new Error('no commit in the measured data block; run to-page.mjs first');
+const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html'];
+const pages = PAGES.map(p => ({ page: p, html: fs.readFileSync(path.join(root, p), 'utf8') }));
+const commits = new Set(pages.map(({ page, html }) => {
+  const c = /"commit":"([0-9a-f]{40})"/.exec(html)?.[1];
+  if (!c) throw new Error(`no commit in the measured data block of ${page}; run to-page.mjs first`);
+  return c;
+}));
+if (commits.size !== 1) throw new Error('the pages are pinned to different commits: ' + [...commits].join(', '));
+const [commit] = commits;
 const engine = { repo: 'https://github.com/ggml-org/llama.cpp', commit };
 
 // { file: '...', line: N, check: '...' } with single-quoted JS strings (\' escapes allowed)
 const STR = String.raw`'((?:[^'\\]|\\.)*)'`;
 const RE = new RegExp(String.raw`\{\s*file:\s*${STR},\s*line:\s*(\d+),\s*check:\s*${STR}`, 'g');
 const unq = s => s.replace(/\\(.)/g, '$1');
-const refs = [...html.matchAll(RE)].map(m => ({ engine, file: unq(m[1]), line: +m[2], check: unq(m[3]) }));
+const refs = pages.flatMap(({ page, html }) =>
+  [...html.matchAll(RE)].map(m => ({ page, engine, file: unq(m[1]), line: +m[2], check: unq(m[3]) })));
 
 const local = path.join(root, 'bench', '.src', 'llama.cpp');
 let useLocal = false;
-try { useLocal = execFileSync('git', ['-C', local, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() === commit; } catch {}
+try { useLocal = execFileSync('git', ['-C', local, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() === commit; } catch {}
 const cache = new Map();
 async function getText(url) {
   if (cache.has(url)) return cache.get(url);
@@ -45,7 +53,8 @@ async function getText(url) {
 let bad = 0;
 for (const r of refs) {
   const res = await checkRef(r, getText);
-  if (!res.ok) { bad++; console.log(`MISS ${r.file}:${r.line} "${r.check}": ${res.reason}`); }
+  if (!res.ok) { bad++; console.log(`MISS ${r.page} ${r.file}:${r.line} "${r.check}": ${res.reason}`); }
 }
+for (const { page } of pages) console.log(`${page}: ${refs.filter(r => r.page === page).length} references`);
 console.log(`${refs.length - bad}/${refs.length} references ok (${useLocal ? 'local checkout' : 'GitHub'} at ${commit.slice(0, 7)})`);
 process.exit(bad ? 1 : 0);

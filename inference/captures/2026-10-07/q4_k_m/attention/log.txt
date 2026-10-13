@@ -1,0 +1,48 @@
+model: 32 layers, 32 heads, 8 kv heads, head dim 128, eps 9.999999747378752e-06, rope base 500000.0
+prompt: 41 tokens; first [128000, 128006, 9125] ['<|begin_of_text|>', '<|start_header_id|>', 'system'], last [78191, 128007, 271] ['assistant', '<|end_header_id|>', '\n\n']
+check embd         max |diff| vs eval-callback corners: 0.0000   mine [[0.0, 0.0, 0.0], [0.004000000189989805, -0.0, 0.0012000000569969416]]
+check attn_norm    max |diff| vs eval-callback corners: 0.0000   mine [[0.0, 0.0, 0.0], [0.03799999877810478, -0.0, 0.0035000001080334187]]
+check q            max |diff| vs eval-callback corners: 0.0047   mine [[-0.11259999871253967, -0.16140000522136688, 0.22939999401569366], [0.44670000672340393, -0.34929999709129333, 0.2223999947309494]]
+check k            max |diff| vs eval-callback corners: 0.0127   mine [[0.4648999869823456, -0.4050999879837036, 0.9225000143051147], [1.7103999853134155, -2.0797998905181885, 1.7596999406814575]]
+check v            max |diff| vs eval-callback corners: 0.0012   mine [[0.010999999940395355, 0.0017000000225380063, 0.026000000536441803], [-0.00039999998989515007, 0.0008999999845400453, -0.001500000013038516]]
+check q_rope       max |diff| vs eval-callback corners: 0.0057   mine [[-0.11259999871253967, -0.16140000522136688, 0.22939999401569366], [0.8424999713897705, 0.4253999888896942, 0.2888000011444092]]
+check attention    max |diff| vs eval-callback corners: 0.0004   mine [[0.010999999940395355, 0.0017000000225380063, 0.026000000536441803], [-0.0210999995470047, -0.002099999925121665, 0.0494999997317791]]
+check ffn_inp      max |diff| vs eval-callback corners: 0.0002   mine [[0.003000000026077032, -0.002400000113993883, 0.00019999999494757503], [0.0071000000461936, 0.0003000000142492354, 9.999999747378752e-05]]
+check l_out        max |diff| vs eval-callback corners: 0.0002   mine [[0.004399999976158142, 0.004699999932199717, 0.0017000000225380063], [0.022600000724196434, -0.002300000051036477, -0.0003000000142492354]]
+layer 0 done, 7 s
+layer 1 done, 9 s
+layer 2 done, 11 s
+layer 3 done, 12 s
+layer 4 done, 15 s
+layer 5 done, 17 s
+layer 6 done, 19 s
+layer 7 done, 21 s
+layer 8 done, 23 s
+layer 9 done, 25 s
+layer 10 done, 27 s
+layer 11 done, 29 s
+layer 12 done, 31 s
+layer 13 done, 32 s
+layer 14 done, 34 s
+layer 15 done, 36 s
+layer 16 done, 37 s
+layer 17 done, 39 s
+layer 18 done, 41 s
+layer 19 done, 43 s
+layer 20 done, 45 s
+layer 21 done, 47 s
+layer 22 done, 49 s
+layer 23 done, 51 s
+layer 24 done, 54 s
+layer 25 done, 56 s
+layer 26 done, 59 s
+layer 27 done, 62 s
+layer 28 done, 64 s
+layer 29 done, 67 s
+layer 30 done, 70 s
+layer 31 done, 73 s
+check l_out_31     max |diff| vs eval-callback corners: 0.1000   mine [[-1.0923999547958374, 0.20190000534057617, 0.2635999917984009], [-0.4237000048160553, 0.19949999451637268, 0.9983000159263611]]
+check output_norm  max |diff| vs eval-callback corners: 0.4732   mine [[-5.145699977874756, 0.9208999872207642, 1.2728999853134155], [-1.9452999830245972, 0.796999990940094, 4.404900074005127]]
+check logits       max |diff| vs eval-callback corners: 0.3981   mine [[4.3368000984191895, 10.91759967803955, 7.874199867248535], [0.09369999915361404, 0.09369999915361404, 0.09369999915361404]]
+top tokens: [(791, 'The', 32.206), (32, 'A', 23.93), (4054, 'One', 23.347), (3947, 'There', 21.88), (2028, 'This', 18.048)]
+saved (32, 32, 41, 41) maps, 83 s total

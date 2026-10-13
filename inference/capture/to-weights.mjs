@@ -4,7 +4,7 @@
 //     the corner values and sum that common_debug_cb_eval prints for each node
 //   - the per-role kernel timings from inventory.json
 //
-//   node inference/capture/to-weights.mjs [captures/<date>]
+//   node inference/capture/to-weights.mjs [captures/<date>] [captures/<date>-bare]
 //
 // The ops logs are git-ignored (they are 1 to 2 MB each); the extracted values are committed
 // inside the page, so the site needs nothing from this folder.
@@ -115,6 +115,7 @@ function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const capDir = path.resolve(root, 'inference', process.argv[2] || 'captures/2026-10-07');
   const dir = path.join(capDir, 'q4_k_m');
+  const bareDir = path.resolve(root, 'inference', process.argv[3] || 'captures/2026-10-13-bare');
   const page = path.join(root, 'llama-cpp-weights.html');
   const inv = JSON.parse(fs.readFileSync(path.join(dir, 'inventory.json'), 'utf8'));
   const tensors = JSON.parse(fs.readFileSync(path.join(dir, 'tensors.json'), 'utf8'));
@@ -141,6 +142,8 @@ function main() {
     vocab: JSON.parse(fs.readFileSync(path.join(dir, 'vocab-sample.json'), 'utf8')).pieces,
     // ops-decode.log is a one-token pass over the BOS token, not a step of the reply
     decodeValuesNote: 'one-token pass over <|begin_of_text|>',
+    // captures/2026-10-13-bare: the same model on the bare text, 7 tokens, run on the CPU, not profiled
+    bare: { tokens: JSON.parse(fs.readFileSync(path.join(bareDir, 'tokens.json'), 'utf8')), text: 'Why is the sky blue?' },
     models: {
       q4_k_m: {
         weightsBytes: inv.weights.gpu_bytes,
@@ -154,6 +157,7 @@ function main() {
     tape: buildTape(tensors),
     values: {
       prefill: parseValues(fs.readFileSync(path.join(dir, 'ops-prefill.log'), 'utf8'), VALUE_KEYS),
+      bare: parseValues(fs.readFileSync(path.join(bareDir, 'ops-bare.log'), 'utf8'), VALUE_KEYS),
       decode: parseValues(fs.readFileSync(path.join(dir, 'ops-decode.log'), 'utf8'), VALUE_KEYS),
     },
   };

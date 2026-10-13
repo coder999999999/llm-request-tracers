@@ -133,11 +133,12 @@ function main() {
     genTokens: 64,
     prompt: {
       text: fs.readFileSync(path.join(dir, 'prompt.txt'), 'utf8'),
-      // the templated prompt starts and ends with fixed special tokens, so these labels are certain
-      first: ['<|begin_of_text|>', '<|start_header_id|>', 'system'],
-      last: ['assistant', '<|end_header_id|>', '\n\n'],
+      // tokens.json: llama-tokenize at the same commit on prompt.txt (BOS added), one {id, piece} per token
+      tokens: JSON.parse(fs.readFileSync(path.join(dir, 'tokens.json'), 'utf8')),
       reply: reply.slice(0, 8),
     },
+    // vocab-sample.json: pieces for the logit ids the page prints, read from the GGUF by gguf-vocab.mjs
+    vocab: JSON.parse(fs.readFileSync(path.join(dir, 'vocab-sample.json'), 'utf8')).pieces,
     // ops-decode.log is a one-token pass over the BOS token, not a step of the reply
     decodeValuesNote: 'one-token pass over <|begin_of_text|>',
     models: {

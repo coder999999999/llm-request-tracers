@@ -128,7 +128,7 @@ function loadPage() {
   const measured = JSON.parse(/<script id="measured" type="application\/json">([\s\S]*?)<\/script>/.exec(html)[1]);
   const ctx = { MEASURED: measured };
   vm.createContext(ctx);
-  vm.runInContext(block[1] + '\n;Object.assign(globalThis,{SHA,STEPS,PHASES});', ctx);
+  vm.runInContext(block[1] + '\n;Object.assign(globalThis,{SHA,STEPS,PHASES,DEFAULT_PHASE});', ctx);
   return { html, measured, ...ctx };
 }
 
@@ -160,14 +160,27 @@ test('the tape covers every GPU byte the forward page counts, and the embedding 
   assert.strictEqual(Math.round(measured.tape.cpu.b / 1048576 * 10) / 10, m.embdMiB);
 });
 
-test('the prompt pass values come from the real prompt, with its first and last tokens labelled', () => {
+test('the prompt pass values come from the real prompt, whose 41 tokens are carried with their text', () => {
   const { measured } = loadPage();
   assert.strictEqual(measured.values.prefill.embd.shape[1], measured.promptTokens);
   assert.strictEqual(measured.values.decode.embd.shape[1], 1);
-  assert.deepStrictEqual(measured.prompt.first, ['<|begin_of_text|>', '<|start_header_id|>', 'system']);
-  assert.deepStrictEqual(measured.prompt.last, ['assistant', '<|end_header_id|>', '\n\n']);
+  const toks = measured.prompt.tokens;
+  assert.strictEqual(toks.length, measured.promptTokens);
+  assert.deepStrictEqual(toks.slice(0, 3).map(t => t.piece), ['<|begin_of_text|>', '<|start_header_id|>', 'system']);
+  assert.deepStrictEqual(toks.slice(-3).map(t => t.piece), ['assistant', '<|end_header_id|>', '\n\n']);
+  assert.deepStrictEqual(toks.slice(30, 36).map(t => t.piece), ['Why', ' is', ' the', ' sky', ' blue', '?']);
+  assert.strictEqual(toks[30].id, 10445);
   assert.strictEqual(measured.prompt.reply[0], 'The');
   assert.strictEqual(measured.values.prefill.logits.shape[0], 128256);
+  // the pieces of the logit ids the table prints, and of the token the scores became
+  assert.strictEqual(measured.vocab['0'], '!');
+  assert.strictEqual(measured.vocab['128255'], '<|reserved_special_token_247|>');
+  assert.strictEqual(measured.vocab['791'], 'The');
+});
+
+test('the page opens on the real prompt pass', () => {
+  const { DEFAULT_PHASE } = loadPage();
+  assert.strictEqual(DEFAULT_PHASE, 'prefill');
 });
 
 test('the weights page is linked from the tracers page and the inference tracer', () => {

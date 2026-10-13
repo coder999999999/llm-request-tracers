@@ -27,7 +27,7 @@ Three pages at the site root render from these captures: `llama-cpp-forward.html
 
 ```bash
 node inference/capture/to-page.mjs              # copy the numbers from captures/2026-10-07 into the forward and inference pages
-node inference/capture/to-weights.mjs           # build the weights page's block: tape from tensors.json, values from the ops logs
+node inference/capture/to-weights.mjs           # build the weights page's block: tape from tensors.json, values from the ops logs (plus captures/2026-10-13-bare)
 node inference/capture/check-page-refs.mjs      # check every file:line reference on the three pages at the pinned commit
 ```
 

@@ -141,9 +141,10 @@ test('every step names a tape tensor, a measured role or neither, and its values
   for (const s of STEPS) {
     for (const k of s.tensors || []) assert.ok(tapeKeys.has(k), `${s.id}: tape ${k}`);
     for (const ph of PHASES) {
-      // roles are one list, or one list per phase where the kernels differ (gate+up fuse in decode)
+      // roles are one list, or one list per phase where the kernels differ (gate+up fuse in decode);
+      // the bare-prompt pass has values but no timings
       const roles = Array.isArray(s.roles) ? s.roles : (s.roles || {})[ph] || [];
-      for (const r of roles) assert.ok(m[ph].byRole[r], `${s.id}: ${ph} role ${r}`);
+      if (m[ph]) for (const r of roles) assert.ok(m[ph].byRole[r], `${s.id}: ${ph} role ${r}`);
       for (const v of s.values || []) assert.ok(measured.values[ph][v], `${s.id}: ${ph} values ${v}`);
     }
     assert.ok(s.ref && s.ref.file && Number.isInteger(s.ref.line) && s.ref.check, `${s.id}: ref`);
@@ -178,9 +179,14 @@ test('the prompt pass values come from the real prompt, whose 41 tokens are carr
   assert.strictEqual(measured.vocab['791'], 'The');
 });
 
-test('the page opens on the real prompt pass', () => {
-  const { DEFAULT_PHASE } = loadPage();
+test('the page opens on the real prompt pass and also carries the bare-prompt pass', () => {
+  const { DEFAULT_PHASE, PHASES, measured } = loadPage();
   assert.strictEqual(DEFAULT_PHASE, 'prefill');
+  assert.deepStrictEqual([...PHASES], ['prefill', 'bare', 'decode']); // a copy: PHASES is an Array of the vm realm
+  assert.deepStrictEqual(measured.bare.tokens.map(t => t.piece), ['<|begin_of_text|>', 'Why', ' is', ' the', ' sky', ' blue', '?']);
+  assert.strictEqual(measured.values.bare.embd.shape[1], 7);
+  assert.strictEqual(measured.values.bare.attention.shape[2], 7);
+  assert.strictEqual(measured.models.q4_k_m.bare, undefined, 'the bare pass was not profiled');
 });
 
 test('the weights page is linked from the tracers page and the inference tracer', () => {

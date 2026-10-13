@@ -548,7 +548,7 @@ function renderHero() {
   const m = M(), dec = m.decode;
   const gb = GB(m.weightsBytes);
   $('headline').textContent = `To produce each new token, the GPU reads every weight of the model once: ${gb} at ${m.label}. Memory speed, not arithmetic, sets the pace.`;
-  $('dek').innerHTML = `The tracer's request, “Why is the sky blue?”, followed below the server: every graph node and every CUDA kernel of one prompt pass and one decode step of Llama 3.1 8B Instruct, timed with Nsight Systems on one ${esc(D.gpu)} at llama.cpp <a href="https://github.com/ggml-org/llama.cpp/tree/${D.commit}">${D.commit.slice(0, 7)}</a>.`;
+  $('dek').innerHTML = `The tracer's request, “Why is the sky blue?”, followed below the server: every graph node and every CUDA kernel of one prompt pass and one decode step of Llama 3.1 8B Instruct, timed with Nsight Systems on one ${esc(D.gpu)} at llama.cpp <a href="https://github.com/ggml-org/llama.cpp/tree/${D.commit}">${D.commit.slice(0, 7)}</a>. To step through the same pass box by box, open the <a href="llama-cpp-inference.html">inference tracer</a>.`;
   $('hero-sub').textContent = `Llama 3.1 8B Instruct, ${m.label}, median of ${dec.steps} steps`;
   const rows = HERO_GROUPS.map(g => {
     const t = opsUs(m, 'decode', g.ops);

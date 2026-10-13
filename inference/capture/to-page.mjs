@@ -1,4 +1,5 @@
-// Copies the measured numbers from the capture inventories into llama-cpp-forward.html.
+// Copies the measured numbers from the capture inventories into llama-cpp-forward.html and
+// llama-cpp-inference.html.
 //
 //   node inference/capture/to-page.mjs [captures/<date>]
 //
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const capDir = path.resolve(root, 'inference', process.argv[2] || 'captures/2026-10-07');
-const page = path.join(root, 'llama-cpp-forward.html');
+const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html'].map(p => path.join(root, p));
 
 const MODELS = [
   { id: 'q4_k_m', label: 'Q4_K_M' },
@@ -66,9 +67,11 @@ const data = {
   models: Object.fromEntries(MODELS.map(m => [m.id, model(m)])),
 };
 
-const html = fs.readFileSync(page, 'utf8');
 const re = /(<script id="measured" type="application\/json">)[\s\S]*?(<\/script>)/;
-if (!re.test(html)) throw new Error('no <script id="measured"> block in ' + page);
 const json = JSON.stringify(data).replace(/</g, '\\u003c');
-fs.writeFileSync(page, html.replace(re, `$1${json}$2`));
-console.log('wrote measured data', (json.length / 1024).toFixed(1) + ' KB', 'into', path.relative(root, page));
+for (const page of PAGES) {
+  const html = fs.readFileSync(page, 'utf8');
+  if (!re.test(html)) throw new Error('no <script id="measured"> block in ' + page);
+  fs.writeFileSync(page, html.replace(re, `$1${json}$2`));
+  console.log('wrote measured data', (json.length / 1024).toFixed(1) + ' KB', 'into', path.relative(root, page));
+}

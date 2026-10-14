@@ -16,7 +16,7 @@ function loadPage() {
   assert.ok(block, 'data block markers');
   const ctx = { MEASURED: measured };
   vm.createContext(ctx);
-  vm.runInContext(block[1] + '\n;Object.assign(globalThis,{SHA,PICKS,REFS});', ctx);
+  vm.runInContext(block[1] + '\n;Object.assign(globalThis,{SHA,PICKS,REFS,SEQ_KINDS});', ctx);
   return { html, measured, ...ctx };
 }
 
@@ -63,4 +63,13 @@ test('every quick pick names a real head and every reference is complete', () =>
 test('the attention page is linked from the tracers page and the weights page', () => {
   assert.match(read('tracers.html'), /href="llama-cpp-attention\.html"/);
   assert.match(read('llama-cpp-weights.html'), /href="llama-cpp-attention\.html"/);
+});
+
+test('the transport can walk the layers and the tour', () => {
+  const { html, SEQ_KINDS, PICKS } = loadPage();
+  assert.deepStrictEqual([...SEQ_KINDS], ['layers', 'tour']);
+  for (const id of ['tFirst', 'tPrev', 'tPlay', 'tNext', 'tStep', 'tName', 'tProg', 'narr']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const k of SEQ_KINDS) assert.match(html, new RegExp(`data-seq="${k}"`), k);
+  assert.ok(PICKS.length >= 4, 'the tour has steps');
+  for (const p of PICKS) assert.ok(p.label && p.why && p.why.length > 40, p.label);
 });

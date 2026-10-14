@@ -20,7 +20,20 @@
   --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
 }
 html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);margin:0;padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.transport{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(15,19,24,.96);border:1px solid var(--line-2);border-radius:10px;padding:7px 9px 7px 12px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:4;max-width:calc(100% - 32px);box-sizing:border-box}
+.transport .lbl{display:grid;min-width:0;width:300px}
+.transport .lbl small{font:600 10px var(--mono);color:var(--hot);letter-spacing:.05em}
+.transport .lbl span{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.transport .pg{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:4px}
+.transport .pg b{display:block;height:100%;background:var(--hot);width:0;transition:width .3s}
+.transport .ibtn{height:30px;min-width:30px}
+.transport .seg button{padding:5px 8px}
+.narr{border:1px solid rgba(255,181,71,.35);background:linear-gradient(180deg,rgba(255,181,71,.08),transparent);border-radius:7px;padding:10px 12px;display:grid;gap:5px;margin-bottom:12px;max-width:70ch}
+.narr .k{font:600 10.5px var(--mono);color:var(--hot);letter-spacing:.04em}
+.narr p{margin:0;color:var(--fg)}
+.grid .rowhl{fill:none;stroke:#fff3dc;stroke-width:1.5;pointer-events:none}
+@media (max-width:980px){ .transport .lbl{width:150px} .transport .seg{display:none} }
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--hot);outline-offset:2px}
 a{color:var(--blue)}
@@ -115,6 +128,7 @@ code{font:12px var(--mono)}
     <ul class="refs" id="refs"></ul>
   </section>
   <section class="panel">
+    <div class="narr" id="narr" hidden></div>
     <div class="row">
       <h2 id="maphead" style="margin:0;flex:1">Pick a head</h2>
       <label class="ibtn" style="cursor:pointer"><input type="checkbox" id="hideSink" style="accent-color:var(--hot);margin:0 4px 0 0"> Hide the first-token column</label>
@@ -126,6 +140,17 @@ code{font:12px var(--mono)}
     <h3>This head</h3>
     <div class="stats" id="stats"></div>
   </section>
+</div>
+<div class="transport" id="transport">
+  <button class="ibtn" id="tFirst" aria-label="Restart" title="Restart">⏮</button>
+  <button class="ibtn" id="tPrev" aria-label="Previous step" title="Previous (←)">◀</button>
+  <button class="ibtn primary" id="tPlay" aria-label="Play" title="Play / pause (Space)">▶ Trace</button>
+  <button class="ibtn" id="tNext" aria-label="Next step" title="Next (→)">▶▶</button>
+  <div class="lbl"><small id="tStep">TRACE THE ATTENTION</small><span id="tName">Press ▶ to walk the layers, or switch to the tour</span><div class="pg"><b id="tProg"></b></div></div>
+  <div class="seg" id="seq" role="group" aria-label="Which sequence to trace">
+    <button data-seq="layers" aria-pressed="true" title="Layer 0 to 31, each layer's average map">Layers</button>
+    <button data-seq="tour" aria-pressed="false" title="The six heads worth a look, in order">Tour</button>
+  </div>
 </div>
 <div class="tip" id="tip" hidden></div>
 
@@ -150,6 +175,7 @@ const REFS = [
   { file: "src/llama-graph.cpp", line: 2726, check: "ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale", what: "masked softmax: the maps on this page" },
   { file: "src/llama-graph.cpp", line: 2664, check: "ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale", what: "the fused path the profiled run took, which never writes the scores out; that is why they were recomputed" },
 ];
+const SEQ_KINDS = ["layers", "tour"];  // the transport walks layer 0 to 31 (average maps) or the PICKS in order
 /* DATA END */
 
 const $ = s => document.querySelector(s);
@@ -256,7 +282,7 @@ function drawStats(v) {
   rows.push(["Key-value head", avg ? "" : `${Math.floor(head / (H / 8))} (shared by heads ${Math.floor(head / 4) * 4} to ${Math.floor(head / 4) * 4 + 3})`]);
   $("#stats").innerHTML = rows.filter(r => r[1]).map(([a, b]) => `<span>${esc(a)}</span><b>${b}</b>`).join("") + (pick && !avg ? `<span style="grid-column:1/-1;margin-top:6px;color:var(--fg)">${esc(pick.why)}</span>` : "");
 }
-function select(layer, head) { sel = { layer, head }; grid.querySelectorAll(".cell").forEach(r => r.classList.toggle("sel", +r.dataset.l === layer && +r.dataset.h === head)); document.querySelectorAll(".pick").forEach((b, i) => b.classList.toggle("on", PICKS[i].layer === layer && PICKS[i].head === head)); drawMap(); }
+function select(layer, head, fromTrace) { if (!fromTrace && ti >= 0) resetTrace(); sel = { layer, head }; grid.querySelectorAll(".cell").forEach(r => r.classList.toggle("sel", +r.dataset.l === layer && +r.dataset.h === head)); document.querySelectorAll(".pick").forEach((b, i) => b.classList.toggle("on", PICKS[i].layer === layer && PICKS[i].head === head)); drawMap(); }
 map.addEventListener("mousemove", ev => {
   const v = mapValues(); if (!v || !geom) { hideTip(); return; }
   const r = map.getBoundingClientRect(), sx = geom.W / r.width;
@@ -270,6 +296,52 @@ $("#hideSink").onchange = drawMap; $("#layerAvg").onchange = drawMap;
 const tip = $("#tip");
 function showTip(html, x, y) { tip.innerHTML = html; tip.hidden = false; const r = tip.getBoundingClientRect(); let Lx = x + 14, T = y + 14; if (Lx + r.width > innerWidth - 8) Lx = x - r.width - 12; if (T + r.height > innerHeight - 8) T = y - r.height - 12; tip.style.left = Lx + "px"; tip.style.top = T + "px"; }
 function hideTip() { tip.hidden = true; }
+
+/* ---------- trace: the layers, or the tour ---------- */
+let seqKind = "layers", ti = -1, playing = false, playTimer = 0;
+const tStep = $("#tStep"), tName = $("#tName"), tProg = $("#tProg"), tPlay = $("#tPlay"), narr = $("#narr");
+const seqLen = () => seqKind === "layers" ? L : PICKS.length;
+const layerSink = l => MEASURED.sink[l].reduce((a, b) => a + b, 0) / H;
+const sinkOrder = [...Array(L).keys()].sort((a, b) => layerSink(a) - layerSink(b));
+function layerNarration(l) {
+  const v = mapValues(); const last = N - 1;
+  const top = v ? [...v.slice(last * N, last * N + N)].map((x, k) => [x, k]).filter(([, k]) => k > 0).sort((a, b) => b[0] - a[0]).slice(0, 2) : [];
+  const rank = sinkOrder.indexOf(l);
+  let s = `${pct(layerSink(l))} of this layer's attention goes to the first token`;
+  s += rank === 0 ? ", the least of any layer." : rank === L - 1 ? ", the most of any layer." : rank < 4 ? ", among the lowest." : rank >= L - 4 ? ", among the highest." : ".";
+  if (top.length) s += ` Apart from it, the last token looks mostly at “${disp(P[top[0][1]])}” (${pct(top[0][0])})` + (top[1] ? ` and “${disp(P[top[1][1]])}” (${pct(top[1][0])}).` : ".");
+  if (l === 0) s += " With only the raw embeddings to go on, the first layer's heads spread out the most.";
+  if (l === L - 1) s += " The output of this layer is what the output head scores.";
+  return s;
+}
+function gotoStep(i) {
+  i = Math.max(0, Math.min(seqLen() - 1, i)); ti = i;
+  let k, text;
+  if (seqKind === "layers") { $("#layerAvg").checked = true; select(i, sel.head, true); k = `LAYER ${i} OF ${L - 1} · AVERAGE OF 32 HEADS`; text = layerNarration(i); }
+  else { const p = PICKS[i]; $("#layerAvg").checked = false; select(p.layer, p.head, true); k = `TOUR · ${i + 1} OF ${PICKS.length} · ${p.label.toUpperCase()}`; text = p.why; }
+  narr.hidden = false; narr.innerHTML = `<span class="k">${esc(k)}</span><p>${esc(text)}</p>`;
+  tStep.textContent = `STEP ${i + 1}/${seqLen()} · ${seqKind === "layers" ? "THE LAYERS" : "THE TOUR"}`;
+  tName.textContent = $("#maphead").textContent;
+  tProg.style.width = ((i + 1) / seqLen() * 100) + "%";
+  grid.querySelectorAll(".rowhl").forEach(r => r.remove());
+  if (seqKind === "layers") { const r = document.createElementNS("http://www.w3.org/2000/svg", "rect"); r.setAttribute("class", "rowhl"); r.setAttribute("x", 33); r.setAttribute("y", 25 + i * 12); r.setAttribute("width", H * 12 + 2); r.setAttribute("height", 14); grid.appendChild(r); }
+}
+function resetTrace() { ti = -1; narr.hidden = true; grid.querySelectorAll(".rowhl").forEach(r => r.remove()); tStep.textContent = "TRACE THE ATTENTION"; tName.textContent = "Press ▶ to walk the layers, or switch to the tour"; tProg.style.width = "0"; tPlay.textContent = "▶ Trace"; }
+function setPlaying(p) { playing = p; tPlay.textContent = p ? "❚❚ Pause" : (ti >= 0 ? "▶ Play" : "▶ Trace"); clearTimeout(playTimer); if (p) playTimer = setTimeout(tick, 2800); }
+function tick() { if (!playing) return; if (ti >= seqLen() - 1) { setPlaying(false); return; } gotoStep(ti + 1); if (ti >= seqLen() - 1) { setPlaying(false); return; } playTimer = setTimeout(tick, 2800); }
+tPlay.onclick = () => { if (playing) { setPlaying(false); return; } gotoStep(ti < 0 || ti >= seqLen() - 1 ? 0 : ti + 1); setPlaying(true); };
+$("#tNext").onclick = () => { setPlaying(false); gotoStep(ti + 1); };
+$("#tPrev").onclick = () => { setPlaying(false); gotoStep(ti < 0 ? 0 : ti - 1); };
+$("#tFirst").onclick = () => { setPlaying(false); gotoStep(0); };
+[...document.querySelectorAll("#seq button")].forEach(b => b.onclick = () => { seqKind = b.dataset.seq; [...b.parentNode.children].forEach(x => x.setAttribute("aria-pressed", x === b)); setPlaying(false); if (ti >= 0) gotoStep(0); else resetTrace(); });
+document.addEventListener("keydown", ev => {
+  if (ev.target.matches("input,textarea")) return;
+  if (ev.key === "ArrowRight") { ev.preventDefault(); setPlaying(false); gotoStep(ti + 1); }
+  else if (ev.key === "ArrowLeft") { ev.preventDefault(); setPlaying(false); gotoStep(ti < 0 ? 0 : ti - 1); }
+  else if (ev.key === " " && !ev.target.closest("button")) { ev.preventDefault(); tPlay.click(); }
+  else if (ev.key === "Escape") { setPlaying(false); resetTrace(); }
+});
+$("#layerAvg").addEventListener("change", () => { if (ti >= 0) resetTrace(); });
 
 /* ---------- boot ---------- */
 drawGrid();

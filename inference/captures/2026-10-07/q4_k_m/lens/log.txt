@@ -1,0 +1,70 @@
+layer 0 done, 7 s
+layer 1 done, 9 s
+layer 2 done, 11 s
+layer 3 done, 13 s
+layer 4 done, 16 s
+layer 5 done, 18 s
+layer 6 done, 20 s
+layer 7 done, 22 s
+layer 8 done, 24 s
+layer 9 done, 25 s
+layer 10 done, 28 s
+layer 11 done, 30 s
+layer 12 done, 32 s
+layer 13 done, 35 s
+layer 14 done, 37 s
+layer 15 done, 39 s
+layer 16 done, 41 s
+layer 17 done, 43 s
+layer 18 done, 45 s
+layer 19 done, 47 s
+layer 20 done, 49 s
+layer 21 done, 51 s
+layer 22 done, 53 s
+layer 23 done, 55 s
+layer 24 done, 56 s
+layer 25 done, 58 s
+layer 26 done, 61 s
+layer 27 done, 62 s
+layer 28 done, 64 s
+layer 29 done, 67 s
+layer 30 done, 68 s
+layer 31 done, 70 s
+dequantizing the output head
+output head (128256, 4096), 79 s
+lens layer 0: last position top 'otron' 0.007
+lens layer 1: last position top ' Voy' 0.0052
+lens layer 2: last position top '.netbeans' 0.0091
+lens layer 3: last position top "'gc" 0.1109
+lens layer 4: last position top ' ' 0.0501
+lens layer 5: last position top "'gc" 0.0273
+lens layer 6: last position top 'ッカー' 0.0267
+lens layer 7: last position top '#af' 0.0117
+lens layer 8: last position top 'LLU' 0.0169
+lens layer 9: last position top ".']" 0.0083
+lens layer 10: last position top 'imity' 0.028
+lens layer 11: last position top 'AutoSize' 0.0116
+lens layer 12: last position top 'AutoSize' 0.0188
+lens layer 13: last position top 'BeginInit' 0.0234
+lens layer 14: last position top "'gc" 0.0124
+lens layer 15: last position top '-wsj' 0.0158
+lens layer 16: last position top '-wsj' 0.0159
+lens layer 17: last position top "'gc" 0.0226
+lens layer 18: last position top 'uish' 0.0057
+lens layer 19: last position top 'anford' 0.0114
+lens layer 20: last position top 'oyer' 0.018
+lens layer 21: last position top "'gc" 0.0123
+lens layer 22: last position top 'oyer' 0.0109
+lens layer 23: last position top ' phenomenon' 0.0524
+lens layer 24: last position top ' phenomenon' 0.0255
+lens layer 25: last position top 'oyer' 0.0167
+lens layer 26: last position top ' The' 0.0193
+lens layer 27: last position top ' phenomenon' 0.0194
+lens layer 28: last position top ' The' 0.0249
+lens layer 29: last position top ' The' 0.0334
+lens layer 30: last position top 'The' 0.0646
+lens layer 31: last position top 'The' 0.9541
+lens layer 32: last position top 'The' 0.9996
+final candidates: [('The', 1.0), ('A', 0.0), ('One', 0.0), ('There', 0.0), ('This', 0.0), (' The', 0.0), ('Our', 0.0), ('It', 0.0)]
+attribution check: components sum [10.89, 2.6, 2.03, 0.57, -3.27, -3.79, -4.38, -4.59] vs direct [10.880000114440918, 2.5999999046325684, 2.0199999809265137, 0.550000011920929, -3.2799999713897705, -3.799999952316284, -4.389999866485596, -4.590000152587891]
+done, 95 s

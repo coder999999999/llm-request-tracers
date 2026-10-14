@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { checkRef } from '../../tools/check-sources.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html', 'llama-cpp-weights.html'];
+const PAGES = ['llama-cpp-forward.html', 'llama-cpp-inference.html', 'llama-cpp-weights.html', 'llama-cpp-attention.html'];
 const pages = PAGES.map(p => ({ page: p, html: fs.readFileSync(path.join(root, p), 'utf8') }));
 const commits = new Set(pages.map(({ page, html }) => {
   const c = /"commit":"([0-9a-f]{40})"/.exec(html)?.[1];

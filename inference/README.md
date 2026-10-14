@@ -23,12 +23,13 @@ docker run --rm -v "$(pwd -W)/inference:/work" rtbench/llama-prof:2ca15f5 \
 
 ## The page
 
-Three pages at the site root render from these captures: `llama-cpp-forward.html`, the write-up with charts; `llama-cpp-inference.html`, the same pass as a tracer graph you can step through; and `llama-cpp-weights.html`, the pass as a tape of every weight tensor in read order, with the real activation values the eval-callback logs recorded at each step. Each stays one self-contained file: the measured numbers sit in its `<script id="measured">` block, and the explanations and source references are written in the page.
+Four pages at the site root render from these captures: `llama-cpp-forward.html`, the write-up with charts; `llama-cpp-inference.html`, the same pass as a tracer graph you can step through; `llama-cpp-weights.html`, the pass as a tape of every weight tensor in read order, with the real activation values the eval-callback logs recorded at each step; and `llama-cpp-attention.html`, the attention map of every head for the prompt, recomputed on the CPU by `capture/attention_maps.py` (numpy + gguf-py from the same GGUF; flash attention never writes the scores out) and checked against the eval-callback corners. Its maps live in `data/attention/` (1.7 MB, one byte per weight) and are loaded by the page on demand. Each stays one self-contained file: the measured numbers sit in its `<script id="measured">` block, and the explanations and source references are written in the page.
 
 ```bash
 node inference/capture/to-page.mjs              # copy the numbers from captures/2026-10-07 into the forward and inference pages
 node inference/capture/to-weights.mjs           # build the weights page's block: tape from tensors.json, values from the ops logs (plus captures/2026-10-13-bare)
-node inference/capture/check-page-refs.mjs      # check every file:line reference on the three pages at the pinned commit
+node inference/capture/to-attention.mjs         # copy the attention maps into data/attention and the page's block
+node inference/capture/check-page-refs.mjs      # check every file:line reference on the four pages at the pinned commit
 ```
 
 `check-page-refs.mjs` applies the same rule as `tools/check-sources.mjs`: the check text must appear within 3 lines of the cited line. It reads `bench/.src/llama.cpp` when that checkout is at the pinned commit, and fetches from GitHub otherwise. Run both after changing a capture or the page's references.

@@ -442,7 +442,7 @@ function gotoStep(i) {
     k = `DECODE · REPLY TOKEN ${i + 1} OF ${D.tileRows}`; text = decodeNarration(i);
   } else {
     dstep = -1; strip.hidden = true;
-    if (seqKind === "layers") { $("#layerAvg").checked = true; select(i, sel.head, true); k = `LAYER ${i} OF ${L - 1} · AVERAGE OF 32 HEADS`; text = layerNarration(i); }
+    if (seqKind === "layers") { $("#layerAvg").checked = true; select(i, sel.head, true); k = `LAYER ${i} (${i + 1} OF ${L}) · AVERAGE OF 32 HEADS`; text = layerNarration(i); }
     else { const p = PICKS[i]; $("#layerAvg").checked = false; select(p.layer, p.head, true); k = `TOUR · ${i + 1} OF ${PICKS.length} · ${p.label.toUpperCase()}`; text = p.why; }
   }
   narr.hidden = false; narr.innerHTML = `<span class="k">${esc(k)}</span><p>${esc(text)}</p>`;

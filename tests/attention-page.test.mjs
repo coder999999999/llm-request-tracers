@@ -67,9 +67,28 @@ test('the attention page is linked from the tracers page and the weights page', 
 
 test('the transport can walk the layers and the tour', () => {
   const { html, SEQ_KINDS, PICKS } = loadPage();
-  assert.deepStrictEqual([...SEQ_KINDS], ['layers', 'tour']);
+  assert.deepStrictEqual([...SEQ_KINDS], ['layers', 'tour', 'decode']);
   for (const id of ['tFirst', 'tPrev', 'tPlay', 'tNext', 'tStep', 'tName', 'tProg', 'narr']) assert.match(html, new RegExp(`id="${id}"`), id);
   for (const k of SEQ_KINDS) assert.match(html, new RegExp(`data-seq="${k}"`), k);
   assert.ok(PICKS.length >= 4, 'the tour has steps');
   for (const p of PICKS) assert.ok(p.label && p.why && p.why.length > 40, p.label);
+});
+
+test('the decode rows cover every reply token for every head, and the stats agree with the file', () => {
+  const { measured } = loadPage();
+  const d = measured.decode;
+  assert.ok(d, 'decode data present');
+  const [L, H, n] = measured.shape;
+  assert.strictEqual(d.promptTokens, n);
+  assert.strictEqual(d.tokens, n + d.tileRows);
+  assert.strictEqual(d.replyPieces.length, d.tileRows);
+  assert.strictEqual(d.pieces.length, d.tokens);
+  assert.deepStrictEqual(d.pieces.slice(0, n), measured.pieces);
+  assert.strictEqual(d.topChoice.length, d.tileRows);
+  for (const key of ['sink', 'prev', 'promptShare']) { assert.strictEqual(d[key].length, L, key); for (const row of d[key]) assert.strictEqual(row.length, H, key); }
+  const png = fs.readFileSync(path.join(root, d.file));
+  assert.deepStrictEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const w = png.readUInt32BE(16), h = png.readUInt32BE(20);
+  assert.strictEqual(w, H * d.tileCols); assert.strictEqual(h, L * d.tileRows);
+  assert.ok(png.length < 4 * 1024 * 1024, 'the decode png stays small');
 });

@@ -2,5 +2,5 @@
 captures/**/trace_cuda_gpu_trace.csv
 captures/**/sched-prefill.log
 captures/**/*.sqlite
-captures/**/attention/maps.npy
-captures/**/attention/maps.u8
+captures/**/attention/**/maps.npy
+captures/**/attention/**/maps.u8

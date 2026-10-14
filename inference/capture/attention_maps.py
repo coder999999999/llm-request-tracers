@@ -78,6 +78,8 @@ def main():
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--prompt", required=True)
     ap.add_argument("--expect", help="values JSON from llama-cpp-weights.html (prefill), for the self-check")
+    ap.add_argument("--reply", help="text of the reply to append after the prompt (teacher-forced): the pass then covers every decode step")
+    ap.add_argument("--prompt-maps", help="maps.u8 of a prompt-only run; with --reply, the prompt rows must match it")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -98,9 +100,14 @@ def main():
     ids = tok.encode(text, add_special_tokens=False).ids
     if ids[0] != BOS:
         ids = [BOS] + ids
+    n_prompt = len(ids)
+    if a.reply:
+        reply_ids = tok.encode(Path(a.reply).read_text(encoding="utf-8"), add_special_tokens=False).ids
+        ids = ids + reply_ids
+        say(f"reply: {len(reply_ids)} tokens re-tokenized from the streamed text")
     pieces = [tok.decode([i]) if i < 128000 else tok.id_to_token(i) for i in ids]
     n = len(ids)
-    say(f"prompt: {n} tokens; first {ids[:3]} {pieces[:3]}, last {ids[-3:]} {pieces[-3:]!r}")
+    say(f"prompt: {n_prompt} tokens; first {ids[:3]} {pieces[:3]}, last {ids[n_prompt-3:n_prompt]} {pieces[n_prompt-3:n_prompt]!r}; pass: {n} tokens")
 
     expect = json.load(open(a.expect)) if a.expect else {}
     def check(key, arr):
@@ -151,31 +158,73 @@ def main():
         x = x + ((g / (1 + np.exp(-g))) * u) @ deq(T[p + "ffn_down.weight"]).T
         if il == 0: check("l_out", x)
         say(f"layer {il} done, {time.time() - t0:.0f} s")
-    check("l_out_31", x[-1:])
-    hN = rms_norm(x[-1:], deq(T["output_norm.weight"]), eps)
-    check("output_norm", hN)
-    W = T["output.weight"]; logits = np.empty(int(W.shape[1]), dtype=np.float32)
+    # logits for the last prompt token and, with --reply, for every reply position (teacher-forced)
+    rows_out = [n_prompt - 1] + list(range(n_prompt, n)) if a.reply else [n - 1]
+    check("l_out_31", x[n_prompt - 1:n_prompt])
+    hN = rms_norm(x[rows_out], deq(T["output_norm.weight"]), eps)
+    check("output_norm", hN[:1])
+    W = T["output.weight"]; logits = np.empty((len(rows_out), int(W.shape[1])), dtype=np.float32)
     step = 8192
-    for r0 in range(0, logits.shape[0], step):
-        logits[r0:r0 + step] = (hN @ deq(W, rows=range(r0, min(r0 + step, logits.shape[0]))).T)[0]
-    check("logits", logits[None, :])
-    top = np.argsort(-logits)[:5]
-    say("top tokens:", [(int(i), tok.decode([int(i)]), round(float(logits[i]), 3)) for i in top])
+    for r0 in range(0, logits.shape[1], step):
+        logits[:, r0:r0 + step] = hN @ deq(W, rows=range(r0, min(r0 + step, logits.shape[1]))).T
+    check("logits", logits[:1])
+    top = np.argsort(-logits[0])[:5]
+    say("top tokens:", [(int(i), tok.decode([int(i)]), round(float(logits[0, i]), 3)) for i in top])
+    # at each reply position: the model's own top choice, and whether it matches the next reply token
+    argmax = [int(i) for i in logits.argmax(-1)]
+    matches = [argmax[j] == ids[n_prompt + j] for j in range(n - n_prompt)]
+    if a.reply:
+        say(f"top choice matched the sampled reply token at {sum(matches)} of {len(matches)} steps")
+    if a.prompt_maps:
+        prev = np.frombuffer(Path(a.prompt_maps).read_bytes(), dtype=np.uint8).reshape(n_layer, n_head, n_prompt, n_prompt)
+        mine = np.clip(np.rint(maps[:, :, :n_prompt, :n_prompt] * 255), 0, 255).astype(np.uint8)
+        d = np.abs(prev.astype(int) - mine.astype(int)).max()
+        say(f"prompt rows vs the prompt-only run: max byte difference {d}")
+        assert d <= 1, "the prompt rows should not depend on the reply"
 
     # per-head stats for the page: share on the first token, on the previous token, and entropy (bits), averaged over queries
     sink = maps[:, :, 1:, 0].mean(-1)
     prev = np.array([[np.mean([maps[l, h, i, i - 1] for i in range(1, n)]) for h in range(n_head)] for l in range(n_layer)])
     ent = -(maps * np.log2(np.maximum(maps, 1e-12))).sum(-1).mean(-1)
+    u8 = np.clip(np.rint(maps * 255), 0, 255).astype(np.uint8)
     np.save(out / "maps.npy", maps.astype(np.float16))
-    (out / "maps.u8").write_bytes(np.clip(np.rint(maps * 255), 0, 255).astype(np.uint8).tobytes())
-    json.dump({
-        "model": "Llama-3.1-8B-Instruct-Q4_K_M", "prompt_tokens": n, "ids": ids, "pieces": pieces,
+    (out / "maps.u8").write_bytes(u8.tobytes())
+    info = {
+        "model": "Llama-3.1-8B-Instruct-Q4_K_M", "prompt_tokens": n_prompt, "tokens": n, "ids": ids, "pieces": pieces,
         "shape": [n_layer, n_head, n, n], "layout": "maps.u8: uint8 value*255, index ((layer*heads + head)*n + query)*n + key",
         "top_tokens": [[int(i), tok.decode([int(i)])] for i in top],
         "sink": sink.round(4).tolist(), "prev": prev.round(4).tolist(), "entropy_bits": ent.round(3).tolist(),
         "method": "float32 numpy forward pass from the Q4_K_M GGUF, weights dequantized with gguf-py; llama.cpp's CUDA path also quantizes activations, so values differ slightly",
-    }, open(out / "tokens.json", "w"), indent=1)
+    }
+    if a.reply:
+        # the decode rows (one per reply token, over all keys) as one PNG: a 32 x 32 mosaic of (reply rows x keys) tiles
+        rows = u8[:, :, n_prompt:, :]  # [L, H, reply, n]
+        img = rows.transpose(0, 2, 1, 3).reshape(n_layer * (n - n_prompt), n_head * n)
+        (out / "decode.png").write_bytes(png_gray(img))
+        d_sink = maps[:, :, n_prompt:, 0].mean(-1)
+        d_prev = np.array([[np.mean([maps[l, h, i, i - 1] for i in range(n_prompt, n)]) for h in range(n_head)] for l in range(n_layer)])
+        d_prompt = maps[:, :, n_prompt:, 1:n_prompt].sum(-1).mean(-1)   # share on the prompt (first token excluded)
+        info.update({
+            "reply_pieces": pieces[n_prompt:], "reply_ids": ids[n_prompt:],
+            "decode_png": {"file": "decode.png", "tile_rows": n - n_prompt, "tile_cols": n, "layout": "row = layer*reply_rows + reply_row, column = head*n + key"},
+            "top_choice": [[int(argmax[j]), tok.decode([int(argmax[j])]), bool(matches[j])] for j in range(n - n_prompt)],
+            "decode_sink": d_sink.round(4).tolist(), "decode_prev": d_prev.round(4).tolist(), "decode_prompt_share": d_prompt.round(4).tolist(),
+            "reply_note": "reply token ids were re-tokenized from the streamed reply text; the pass is teacher-forced on them",
+        })
+    json.dump(info, open(out / "tokens.json", "w"), indent=1)
     say(f"saved {maps.shape} maps, {time.time() - t0:.0f} s total")
+
+
+def png_gray(img):
+    """Minimal 8-bit grayscale PNG writer (zlib + struct; no PIL)."""
+    import struct, zlib
+    h, w = img.shape
+    raw = b"".join(b"\x00" + img[y].tobytes() for y in range(h))
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
 if __name__ == "__main__":

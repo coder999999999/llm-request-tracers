@@ -30,6 +30,25 @@ const data = {
   sink: t.sink, prev: t.prev, entropy: t.entropy_bits,
   method: t.method,
 };
+
+// The decode steps: a second run with --reply writes decode.png (one row per reply token, over all keys)
+// and its own stats into <dir>/decode/tokens.json. Optional until that run exists.
+const ddir = path.join(dir, 'decode');
+if (fs.existsSync(path.join(ddir, 'tokens.json'))) {
+  const d = JSON.parse(fs.readFileSync(path.join(ddir, 'tokens.json'), 'utf8'));
+  if (d.pieces.slice(0, L && t.pieces.length).join('\u0000') !== t.pieces.join('\u0000')) throw new Error('decode run: prompt tokens differ from the prompt run');
+  const png = fs.readFileSync(path.join(ddir, d.decode_png.file));
+  fs.writeFileSync(path.join(root, 'data', 'attention', NAME + '-decode.png'), png);
+  data.decode = {
+    file: `data/attention/${NAME}-decode.png`,
+    tokens: d.tokens, promptTokens: d.prompt_tokens, pieces: d.pieces, replyPieces: d.reply_pieces,
+    tileRows: d.decode_png.tile_rows, tileCols: d.decode_png.tile_cols,
+    topChoice: d.top_choice,
+    sink: d.decode_sink, prev: d.decode_prev, promptShare: d.decode_prompt_share,
+    note: d.reply_note,
+  };
+  console.log('decode:', d.tokens - d.prompt_tokens, 'reply tokens,', (png.length / 1024).toFixed(0) + ' KB png');
+}
 const html = fs.readFileSync(page, 'utf8');
 const re = /(<script id="measured" type="application\/json">)[\s\S]*?(<\/script>)/;
 if (!re.test(html)) throw new Error('no <script id="measured"> block in ' + page);

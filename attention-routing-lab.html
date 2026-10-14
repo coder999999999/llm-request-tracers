@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attention routing lab · experimental</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui;background:#101521;color:#e9eef9}body{max-width:1200px;margin:35px auto;padding:0 22px}a{color:#91c5ff}
+p,small{color:#b7c3d8;line-height:1.6}h1{margin-bottom:4px}button{font:inherit;background:#242f44;color:#edf3ff;border:1px solid #4a5974;padding:9px 12px;border-radius:7px;cursor:pointer}button[aria-pressed=true]{background:#2b658b}button:focus-visible{outline:2px solid #fff}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}main{display:grid;grid-template-columns:minmax(320px,1fr) minmax(300px,1fr);gap:24px}
+canvas{width:100%;height:auto;border:1px solid #4a5974;border-radius:6px;image-rendering:pixelated}#grid{cursor:crosshair}#details{border:1px solid #4a5974;border-radius:10px;padding:16px}#rows{width:100%;border-collapse:collapse}td{padding:10px 5px;border-bottom:1px solid #37445b}td:last-child{text-align:right;font-variant-numeric:tabular-nums}#error{color:#ffb2b2}footer{margin-top:25px;border-top:1px solid #37445b;padding-top:12px}@media(max-width:780px){main{grid-template-columns:1fr}}
+</style>
+<h1>Attention routing lab <small>experimental</small></h1>
+<p>An additional dimension on the existing 32 × 32 heads: how far non-sink attention travels while reading, and how strongly each head attends back into the prompt while writing. Uses the same measured trace files; does not imply causal importance.</p>
+<a href="llama-cpp-attention.html">← Original attention map</a>
+<div class="controls" id="controls">
+<button data-metric="distance" aria-pressed="true">Non-sink lookback distance</button>
+<button data-metric="prompt" aria-pressed="false">Reply → prompt share</button>
+<button data-metric="delta" aria-pressed="false">Reply vs prompt first-token shift</button>
+</div>
+<p id="status">Reading the existing trace…</p>
+<main><section><h2>32 layers × 32 heads</h2><canvas id="grid" width="640" height="640" aria-label="Click a cell to inspect a head"></canvas><small>Top is layer 0; left is head 0. Brighter means a higher measured value within the selected metric. Click a cell.</small></section>
+<section id="details"><h2 id="heading">Select a head</h2><table id="rows"></table><h3>Prompt token-by-token lookback</h3><canvas id="plot" width="600" height="220"></canvas><small>The chart excludes key position 0 (the first-token attention sink). Where non-sink mass is zero, lookback is undefined and left blank. Values are descriptive statistics, not explanations.</small></section></main>
+<footer><p><b>Definitions.</b> Lookback distance = attention-weighted mean (query position − key position) / query position, after excluding key 0, averaged over query positions 2…N−1 where non-sink mass exists. Reply→prompt share is the recorded share of decode-row attention to the original prompt, including sink. First-token shift is decode first-token share minus prompt first-token share. The prompt and reply data come from replayed quantized-model runs; decoding is teacher-forced and not necessarily the original sampling path. First-token shift is a cross-phase descriptive comparison, not a causal score.</p></footer>
+<script>
+(async function(){
+ const $=s=>document.querySelector(s), status=$('#status'),grid=$('#grid'),plot=$('#plot');
+ try{
+  const html=await(await fetch('llama-cpp-attention.html')).text();
+  const dom=new DOMParser().parseFromString(html,'text/html');
+  const raw=dom.querySelector('#measured');if(!raw)throw Error('Measured trace missing');
+  const m=JSON.parse(raw.textContent),[L,H,N,N2]=m.shape;
+  if(N!==N2||!m.decode)throw Error('This lab requires the updated prompt + decode trace');
+  const r=await fetch(m.file);if(!r.ok)throw Error('Prompt attention bytes not found: '+r.status);
+  const buf=new Uint8Array(await r.arrayBuffer());if(buf.length!==L*H*N*N)throw Error('Unexpected prompt matrix size');
+  const dist=Array.from({length:L},()=>Array(H).fill(0)), curves=[];
+  for(let l=0;l<L;l++)for(let h=0;h<H;h++){
+   const curve=[],base=(l*H+h)*N*N;
+   for(let q=0;q<N;q++){
+    if(q<2){curve.push(null);continue;}
+    let sum=0,weighted=0;
+    for(let k=1;k<=q;k++){const w=buf[base+q*N+k];sum+=w;weighted+=w*(q-k)/q;}
+    curve.push(sum>0?weighted/sum:null);
+   }
+   curves[l*H+h]=curve;
+   const valid=curve.filter(v=>v!==null);
+   dist[l][h]=valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:0;
+  }
+  const fields={
+   distance:{title:'Non-sink lookback distance',data:dist,fmt:v=>(v*100).toFixed(1)+'% of available history'},
+   prompt:{title:'Reply attention to prompt',data:m.decode.promptShare,fmt:v=>(v*100).toFixed(1)+'%'},
+   delta:{title:'Decode minus prompt first-token share',data:m.decode.sink.map((row,l)=>row.map((v,h)=>v-m.sink[l][h])),fmt:v=>(v*100).toFixed(1)+' percentage points'}
+  };
+  let metric='distance',sel=[10,27];
+  function redraw(){
+   const f=fields[metric],vals=f.data.flat(),low=Math.min(...vals),high=Math.max(...vals);
+   const ctx=grid.getContext('2d'),w=grid.width/H,z=grid.height/L;
+   ctx.clearRect(0,0,grid.width,grid.height);
+   for(let l=0;l<L;l++)for(let h=0;h<H;h++){
+    const v=f.data[l][h],t=(v-low)/(high-low||1);
+    ctx.fillStyle='hsl('+(220-175*t)+' 78% '+(16+54*t)+'%)';
+    ctx.fillRect(h*w,l*z,w-1,z-1);
+   }
+   ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.strokeRect(sel[1]*w+1,sel[0]*z+1,w-2,z-2);
+   status.textContent=f.title+' · observed range: '+f.fmt(low)+' to '+f.fmt(high)+' · selected layer '+sel[0]+', head '+sel[1];
+   const [l,h]=sel;
+   $('#heading').textContent='Layer '+l+', head '+h+' · KV group '+Math.floor(h/4);
+   const rows=[['Non-sink prompt lookback',fields.distance.fmt(dist[l][h])],['Reply attention to prompt',fields.prompt.fmt(m.decode.promptShare[l][h])],['First-token share, prompt',(m.sink[l][h]*100).toFixed(1)+'%'],['First-token share, reply',(m.decode.sink[l][h]*100).toFixed(1)+'%'],['First-token share shift',fields.delta.fmt(fields.delta.data[l][h])],['Prompt entropy',m.entropy[l][h].toFixed(2)+' bits']];
+   $('#rows').replaceChildren(...rows.map(([label,value])=>{let tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td');a.textContent=label;b.textContent=value;tr.append(a,b);return tr}));
+   const p=plot.getContext('2d'), W=plot.width,HH=plot.height,curve=curves[l*H+h];
+   p.clearRect(0,0,W,HH);p.fillStyle='#172338';p.fillRect(0,0,W,HH);
+   p.strokeStyle='#63738c';p.beginPath();p.moveTo(0,HH-1);p.lineTo(W,HH-1);p.stroke();
+   p.strokeStyle='#65d9e7';p.lineWidth=3;p.beginPath();let started=false;
+   curve.forEach((v,i)=>{if(v===null){started=false;return;}let x=(i/(N-1))*W,y=HH-10-v*(HH-20);if(!started){p.moveTo(x,y);started=true}else p.lineTo(x,y)});
+   p.stroke();
+  }
+  $('#controls').addEventListener('click',e=>{const btn=e.target.closest('[data-metric]');if(!btn)return;metric=btn.dataset.metric;document.querySelectorAll('[data-metric]').forEach(b=>b.setAttribute('aria-pressed',String(b===btn)));redraw()});
+  grid.addEventListener('click',e=>{const box=grid.getBoundingClientRect(),h=Math.min(H-1,Math.floor((e.clientX-box.left)/box.width*H)),l=Math.min(L-1,Math.floor((e.clientY-box.top)/box.height*L));sel=[l,h];redraw()});
+  redraw();
+ }catch(e){status.id='error';status.textContent='Could not load experiment: '+e.message}
+})();
+</script></html>
